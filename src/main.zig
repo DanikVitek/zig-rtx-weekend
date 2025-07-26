@@ -40,13 +40,13 @@ pub fn main() !void {
     var stdout_buf = std.io.bufferedWriter(stdout_file.writer());
     const stdout = stdout_buf.writer();
 
-    var pr_buf: [1024]u8 = undefined;
-    const progress = std.Progress.start(.{
-        .draw_buffer = &pr_buf,
-        .estimated_total_items = img_height * img_width,
-        .root_name = "drawing",
-    });
-    defer progress.end();
+    // var pr_buf: [1024]u8 = undefined;
+    // const progress = std.Progress.start(.{
+    //     .draw_buffer = &pr_buf,
+    //     .estimated_total_items = img_height * img_width,
+    //     .root_name = "drawing",
+    // });
+    // defer progress.end();
 
     try stdout.print("P3\n{d} {d}\n255\n", .{ img_width, img_height });
 
@@ -66,6 +66,8 @@ pub fn main() !void {
 
             const pixel_color = rayColor(r, world);
             try stdout.print("{}\n", .{vec.fmtColor(pixel_color)});
+
+            // progress.completeOne();
         }
     }
 
