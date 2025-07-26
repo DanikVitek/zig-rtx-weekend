@@ -16,8 +16,12 @@ pub fn z(v: Vec3) f64 {
     return v[2];
 }
 
+pub fn magnitudeSquared(v: Vec3) f64 {
+    return dot(v, v);
+}
+
 pub fn magnitude(v: Vec3) f64 {
-    return @sqrt(@reduce(.Add, v * v));
+    return @sqrt(magnitudeSquared(v));
 }
 
 pub fn dot(a: Vec3, b: Vec3) f64 {

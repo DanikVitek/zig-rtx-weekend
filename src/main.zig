@@ -25,11 +25,11 @@ const camera_center: Vec3 = vec.zero;
 const viewport_u: Vec3 = .{ viewport_width, 0, 0 };
 const viewport_v: Vec3 = .{ 0, -viewport_height, 0 };
 
-const pixel_delta_u = viewport_u / @as(Vec3, @splat(img_width));
-const pixel_delta_v = viewport_v / @as(Vec3, @splat(img_height));
+const pixel_delta_u = viewport_u / vec.splat(img_width);
+const pixel_delta_v = viewport_v / vec.splat(img_height);
 
-const viewport_upper_left = camera_center - Vec3{ 0, 0, focal_length } - viewport_u / @as(Vec3, @splat(2)) - viewport_v / @as(Vec3, @splat(2));
-const pixel00_loc = viewport_upper_left + @as(Vec3, @splat(0.5)) * (pixel_delta_u + pixel_delta_v);
+const viewport_upper_left = camera_center - Vec3{ 0, 0, focal_length } - viewport_u / vec.splat(2) - viewport_v / vec.splat(2);
+const pixel00_loc = viewport_upper_left + vec.splat(0.5) * (pixel_delta_u + pixel_delta_v);
 
 pub fn main() !void {
     const stdout_file = std.io.getStdOut();
@@ -69,15 +69,15 @@ pub fn main() !void {
 
 fn hitSphere(center: Vec3, radius: f64, r: *const Ray) f64 {
     const oc = center - r.orig;
-    const a = vec.dot(r.dir, r.dir);
-    const b = -2.0 * vec.dot(r.dir, oc);
-    const c = vec.dot(oc, oc) - radius * radius;
-    const discriminant = b * b - 4 * a * c;
+    const a = vec.magnitudeSquared(r.dir);
+    const h = vec.dot(r.dir, oc);
+    const c = vec.magnitudeSquared(oc) - radius * radius;
+    const discriminant = h * h - a * c;
 
     return if (discriminant < 0)
         -1
     else
-        (-b - std.math.sqrt(discriminant)) / (2 * a);
+        (h - std.math.sqrt(discriminant)) / a;
 }
 
 fn rayColor(r: *const Ray) Vec3 {
