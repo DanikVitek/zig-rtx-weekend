@@ -1,17 +1,27 @@
-pub fn main() !void {
-    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
-
-    // stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    const stdout_file = std.io.getStdOut().writer();
-    var bw = std.io.bufferedWriter(stdout_file);
-    const stdout = bw.writer();
-
-    try stdout.print("Run `zig build test` to run the tests.\n", .{});
-
-    try bw.flush(); // Don't forget to flush!
-}
-
 const std = @import("std");
+
+pub fn main() !void {
+    const stdout_file = std.io.getStdOut();
+    var stdout_buf = std.io.bufferedWriter(stdout_file.writer());
+    const stdout = stdout_buf.writer();
+
+    const height = 256;
+    const width = 256;
+
+    try stdout.print("P3\n{d} {d}\n255\n", .{ width, height });
+
+    for (0..height) |y| {
+        const fy: f32 = @floatFromInt(y);
+        for (0..width) |x| {
+            const fx: f32 = @floatFromInt(x);
+
+            const r: u8 = @intFromFloat(@trunc(255.99 * (fy / (height - 1.0))));
+            const g: u8 = @intFromFloat(@trunc(255.99 * (fx / (width - 1.0))));
+            const b: u8 = 0;
+
+            try stdout.print("{d: >3} {d: >3} {d: >3}\n", .{ r, g, b });
+        }
+    }
+
+    try stdout_buf.flush();
+}
