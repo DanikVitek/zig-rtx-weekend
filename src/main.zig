@@ -5,6 +5,10 @@ const Vec3 = vec.Vec3;
 
 const Ray = @import("Ray.zig");
 
+const objects = @import("objects.zig");
+const Sphere = objects.Sphere;
+const Hit = objects.Hit;
+
 const aspect_ratio = 16.0 / 9.0;
 const img_width = 400;
 const img_height = blk: {
@@ -46,20 +50,21 @@ pub fn main() !void {
 
     try stdout.print("P3\n{d} {d}\n255\n", .{ img_width, img_height });
 
-    // const fwidth: f32 = @floatFromInt(img_width);
-    // const fheight: f32 = @floatFromInt(img_height);
+    const world = .{
+        Sphere.init(.{ 0, 0, -1 }, 0.5),
+        Sphere.init(.{ 0, -100.5, -1 }, 100),
+    };
+
     for (0..img_height) |y| {
-        // const fy: f64 = @floatFromInt(y);
         const yvec: Vec3 = @splat(@floatFromInt(y));
         for (0..img_width) |x| {
-            // const fx: f64 = @floatFromInt(x);
             const xvec: Vec3 = @splat(@floatFromInt(x));
 
             const pixel_center = pixel00_loc + (xvec * pixel_delta_u) + (yvec * pixel_delta_v);
             const ray_dir = pixel_center - camera_center;
             const r: Ray = .init(camera_center, ray_dir);
 
-            const pixel_color = rayColor(&r);
+            const pixel_color = rayColor(r, world);
             try stdout.print("{}\n", .{vec.fmtColor(pixel_color)});
         }
     }
@@ -67,27 +72,25 @@ pub fn main() !void {
     try stdout_buf.flush();
 }
 
-fn hitSphere(center: Vec3, radius: f64, r: *const Ray) f64 {
-    const oc = center - r.orig;
-    const a = vec.magnitudeSquared(r.dir);
-    const h = vec.dot(r.dir, oc);
-    const c = vec.magnitudeSquared(oc) - radius * radius;
-    const discriminant = h * h - a * c;
-
-    return if (discriminant < 0)
-        -1
-    else
-        (h - std.math.sqrt(discriminant)) / a;
-}
-
-fn rayColor(r: *const Ray) Vec3 {
-    const t = hitSphere(.{ 0, 0, -1 }, 0.5, r);
-    if (t > 0) {
-        const N: Vec3 = vec.normalized(r.at(t) - Vec3{ 0, 0, -1 });
-        return @as(Vec3, @splat(0.5)) * (N + @as(Vec3, @splat(1)));
+fn rayColor(r: Ray, world: anytype) Vec3 {
+    if (hitEverything(world, r)) |hit| {
+        return vec.splat(0.5) * (hit.norm + vec.splat(1));
     }
 
     const unit_direction = vec.normalized(r.dir);
     const a: f64 = 0.5 * (unit_direction[1] + 1.0);
-    return @mulAdd(Vec3, @splat(a), Vec3{ 0.5, 0.7, 1 }, @splat(1.0 - a));
+    const wat: Vec3 = .{ 0.5, 0.7, 1 };
+    return @mulAdd(Vec3, @splat(a), wat, @splat(1.0 - a));
+}
+
+fn hitEverything(objs: anytype, ray: Ray) ?Hit {
+    var hit: ?Hit = null;
+    var closest_so_far = std.math.inf(f64);
+    inline for (objs) |obj| {
+        if (obj.hit(ray, 0, closest_so_far)) |h| {
+            hit = h;
+            closest_so_far = hit.?.t;
+        }
+    }
+    return hit;
 }

@@ -16,6 +16,10 @@ pub fn z(v: Vec3) f64 {
     return v[2];
 }
 
+pub fn splat(scalar: f64) Vec3 {
+    return @splat(scalar);
+}
+
 pub fn magnitudeSquared(v: Vec3) f64 {
     return dot(v, v);
 }
