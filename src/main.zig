@@ -67,21 +67,27 @@ pub fn main() !void {
     try stdout_buf.flush();
 }
 
-fn hitSphere(center: Vec3, radius: f64, r: *const Ray) bool {
+fn hitSphere(center: Vec3, radius: f64, r: *const Ray) f64 {
     const oc = center - r.orig;
     const a = vec.dot(r.dir, r.dir);
     const b = -2.0 * vec.dot(r.dir, oc);
     const c = vec.dot(oc, oc) - radius * radius;
     const discriminant = b * b - 4 * a * c;
-    return discriminant >= 0;
+
+    return if (discriminant < 0)
+        -1
+    else
+        (-b - std.math.sqrt(discriminant)) / (2 * a);
 }
 
 fn rayColor(r: *const Ray) Vec3 {
-    if (hitSphere(.{ 0, 0, -1 }, 0.5, r)) {
-        return .{ 1, 0, 0 };
+    const t = hitSphere(.{ 0, 0, -1 }, 0.5, r);
+    if (t > 0) {
+        const N: Vec3 = vec.normalized(r.at(t) - Vec3{ 0, 0, -1 });
+        return @as(Vec3, @splat(0.5)) * (N + @as(Vec3, @splat(1)));
     }
 
     const unit_direction = vec.normalized(r.dir);
-    const a = 0.5 * (unit_direction[1] + 1.0);
-    return @as(Vec3, @splat(1.0 - a)) + Vec3{ a * 0.5, a * 0.7, a };
+    const a: f64 = 0.5 * (unit_direction[1] + 1.0);
+    return @mulAdd(Vec3, @splat(a), Vec3{ 0.5, 0.7, 1 }, @splat(1.0 - a));
 }
