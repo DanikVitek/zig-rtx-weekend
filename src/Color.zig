@@ -94,7 +94,7 @@ pub fn format(
 
     const r_, const g_, const b_ = @as(
         @Vector(3, u8),
-        @intFromFloat(remapped),
+        @intFromFloat(@trunc(remapped)),
     );
     return writer.print("{d} {d} {d}\n", .{ r_, g_, b_ });
 }

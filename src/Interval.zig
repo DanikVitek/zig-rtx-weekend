@@ -20,3 +20,7 @@ pub fn contains(self: Self, val: f64) bool {
 pub fn surrounds(self: Self, val: f64) bool {
     return self.min < val and val < self.max;
 }
+
+pub fn clamp(self: Self, val: f64) f64 {
+    return std.math.clamp(val, self.min, self.max);
+}

@@ -9,6 +9,8 @@ const Hit = objects.Hit;
 
 pub const aspect_ratio = 16.0 / 9.0;
 pub const img_width = 400;
+pub const samples_per_pixel = 10;
+
 const img_height = blk: {
     const fwidth: comptime_float = @as(comptime_float, img_width);
     const h: comptime_int = @intFromFloat(fwidth / aspect_ratio);
@@ -42,13 +44,13 @@ pub fn render(world: anytype) !void {
     var stdout_buf = std.io.bufferedWriter(stdout_file.writer());
     const stdout = stdout_buf.writer();
 
-    // var pr_buf: [1024]u8 = undefined;
-    // const progress = std.Progress.start(.{
-    //     .draw_buffer = &pr_buf,
-    //     .estimated_total_items = img_height * img_width,
-    //     .root_name = "drawing",
-    // });
-    // defer progress.end();
+    var pr_buf: [1024]u8 = undefined;
+    const progress = std.Progress.start(.{
+        .draw_buffer = &pr_buf,
+        .estimated_total_items = img_height * img_width,
+        .root_name = "drawing",
+    });
+    defer progress.end();
 
     try stdout.print("P3\n{d} {d}\n255\n", .{ img_width, img_height });
 
@@ -57,18 +59,39 @@ pub fn render(world: anytype) !void {
         for (0..img_width) |x| {
             const xvec: Vec3 = .splat(@floatFromInt(x));
 
-            const pixel_center: Vec3 = .init(pixel00_loc.v + (xvec.v * pixel_delta_u.v) + (yvec.v * pixel_delta_v.v));
-            const ray_dir: Vec3 = .init(pixel_center.v - camera_center.v);
-            const r: Ray = .init(camera_center, ray_dir);
+            var pixel: Color = .black;
+            for (0..samples_per_pixel) |_| {
+                const ray: Ray = getRay(xvec, yvec);
+                pixel.v += rayColor(ray, world).v;
+            }
+            pixel.v /= @splat(samples_per_pixel);
 
-            const pixel_color = rayColor(r, world);
-            try stdout.print("{}", .{pixel_color});
+            try stdout.print("{}", .{pixel});
 
-            // progress.completeOne();
+            progress.completeOne();
         }
     }
 
     try stdout_buf.flush();
+}
+
+fn getRay(x: Vec3, y: Vec3) Ray {
+    const offset = sampleSquare();
+    const pixel_sample: Vec3 = .mulAdd(y.add(.splat(offset[1])), pixel_delta_v, .mulAdd(x.add(.splat(offset[0])), pixel_delta_u, pixel00_loc));
+
+    const ray_origin = camera_center;
+    const ray_dir: Vec3 = pixel_sample.sub(ray_origin);
+
+    return .init(ray_origin, ray_dir);
+}
+
+var rand_state = std.Random.DefaultPrng.init(42);
+const rand = rand_state.random();
+
+fn sampleSquare() [2]f64 {
+    const u = rand.float(f64);
+    const v = rand.float(f64);
+    return .{ u - 0.5, v - 0.5 };
 }
 
 fn rayColor(r: Ray, world: anytype) Color {
