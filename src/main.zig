@@ -93,7 +93,7 @@ fn hitEverything(objs: anytype, ray: Ray) ?Hit {
     var hit: ?Hit = null;
     var closest_so_far = std.math.inf(f64);
     inline for (objs) |obj| {
-        if (obj.hit(ray, 0, closest_so_far)) |h| {
+        if (obj.hit(ray, .{ .min = 0, .max = closest_so_far })) |h| {
             hit = h;
             closest_so_far = hit.?.t;
         }

@@ -4,6 +4,7 @@ const assert = std.debug.assert;
 
 const Vec3 = @import("Vec3.zig");
 const Ray = @import("Ray.zig");
+const Interval = @import("Interval.zig");
 
 pub const Hit = struct {
     p: Vec3,
@@ -45,7 +46,7 @@ pub const Sphere = struct {
         };
     }
 
-    pub fn hit(self: *const Sphere, ray: Ray, ray_tmin: f64, ray_tmax: f64) ?Hit {
+    pub fn hit(self: Sphere, ray: Ray, ray_t: Interval) ?Hit {
         const center: Vec3 = self.center;
         const radius: f64 = self.radius;
 
@@ -61,9 +62,9 @@ pub const Sphere = struct {
 
         // find the nearest root that lies in the acceptable range
         var root: f64 = (h - sqrtd) / a;
-        if (root <= ray_tmin or ray_tmax <= root) {
+        if (!ray_t.surrounds(root)) {
             root = (h + sqrtd) / a;
-            if (root <= ray_tmin or ray_tmax <= root)
+            if (!ray_t.surrounds(root))
                 return null;
         }
 
