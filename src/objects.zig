@@ -21,7 +21,7 @@ pub const Hit = struct {
         if (builtin.mode == .Debug) {
             // NOTE: the parameter `outward_normal` is assumed to have unit length.
             const one = outward_normal.magnitude2();
-            assert(std.math.approxEqAbs(f64, one, 1, 0.0001));
+            assert(std.math.approxEqAbs(f64, one, 1, 1e-5));
         }
 
         const front_face = ray.dir.dot(outward_normal) < 0;
