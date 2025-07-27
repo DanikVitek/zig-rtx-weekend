@@ -1,6 +1,5 @@
 const std = @import("std");
-const vec = @import("vec.zig");
-const Vec3 = vec.Vec3;
+const Vec3 = @import("Vec3.zig");
 
 orig: Vec3,
 dir: Vec3,
@@ -12,6 +11,5 @@ pub fn init(orig: Vec3, dir: Vec3) Ray {
 }
 
 pub fn at(r: Ray, t: f64) Vec3 {
-    const tvec: Vec3 = @splat(t);
-    return r.orig + tvec * r.dir;
+    return .mulAdd(.splat(t), r.dir, r.orig);
 }

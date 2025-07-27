@@ -1,7 +1,6 @@
 const std = @import("std");
 
-const vec = @import("vec.zig");
-const Vec3 = vec.Vec3;
+const Vec3 = @import("Vec3.zig");
 
 const Ray = @import("Ray.zig");
 
@@ -24,16 +23,20 @@ const viewport_width = blk: {
     const fheight: comptime_float = @as(comptime_float, img_height);
     break :blk viewport_height * (fwidth + 0.0) / fheight;
 };
-const camera_center: Vec3 = vec.zero;
+const camera_center: Vec3 = .zero;
 
-const viewport_u: Vec3 = .{ viewport_width, 0, 0 };
-const viewport_v: Vec3 = .{ 0, -viewport_height, 0 };
+const viewport_u: Vec3 = .init(.{ viewport_width, 0, 0 });
+const viewport_v: Vec3 = .init(.{ 0, -viewport_height, 0 });
 
-const pixel_delta_u = viewport_u / vec.splat(img_width);
-const pixel_delta_v = viewport_v / vec.splat(img_height);
+const pixel_delta_u: Vec3 = .init(viewport_u.v / Vec3.splat(img_width).v);
+const pixel_delta_v: Vec3 = .init(viewport_v.v / Vec3.splat(img_height).v);
 
-const viewport_upper_left = camera_center - Vec3{ 0, 0, focal_length } - viewport_u / vec.splat(2) - viewport_v / vec.splat(2);
-const pixel00_loc = viewport_upper_left + vec.splat(0.5) * (pixel_delta_u + pixel_delta_v);
+const viewport_upper_left: Vec3 = .init(
+    camera_center.v - Vec3.Repr{ 0, 0, focal_length } - viewport_u.v / Vec3.splat(2).v - viewport_v.v / Vec3.splat(2).v,
+);
+const pixel00_loc: Vec3 = .init(
+    viewport_upper_left.v + Vec3.splat(0.5).v * (pixel_delta_u.v + pixel_delta_v.v),
+);
 
 pub fn main() !void {
     const stdout_file = std.io.getStdOut();
@@ -51,21 +54,21 @@ pub fn main() !void {
     try stdout.print("P3\n{d} {d}\n255\n", .{ img_width, img_height });
 
     const world = .{
-        Sphere.init(.{ 0, 0, -1 }, 0.5),
-        Sphere.init(.{ 0, -100.5, -1 }, 100),
+        Sphere.init(.init(.{ 0, 0, -1 }), 0.5),
+        Sphere.init(.init(.{ 0, -100.5, -1 }), 100),
     };
 
     for (0..img_height) |y| {
-        const yvec: Vec3 = @splat(@floatFromInt(y));
+        const yvec: Vec3 = .splat(@floatFromInt(y));
         for (0..img_width) |x| {
-            const xvec: Vec3 = @splat(@floatFromInt(x));
+            const xvec: Vec3 = .splat(@floatFromInt(x));
 
-            const pixel_center = pixel00_loc + (xvec * pixel_delta_u) + (yvec * pixel_delta_v);
-            const ray_dir = pixel_center - camera_center;
+            const pixel_center: Vec3 = .init(pixel00_loc.v + (xvec.v * pixel_delta_u.v) + (yvec.v * pixel_delta_v.v));
+            const ray_dir: Vec3 = .init(pixel_center.v - camera_center.v);
             const r: Ray = .init(camera_center, ray_dir);
 
             const pixel_color = rayColor(r, world);
-            try stdout.print("{}\n", .{vec.fmtColor(pixel_color)});
+            try stdout.print("{}", .{pixel_color.fmtPpmColor()});
 
             // progress.completeOne();
         }
@@ -76,13 +79,13 @@ pub fn main() !void {
 
 fn rayColor(r: Ray, world: anytype) Vec3 {
     if (hitEverything(world, r)) |hit| {
-        return vec.splat(0.5) * (hit.norm + vec.splat(1));
+        return .init(Vec3.splat(0.5).v * (hit.norm.v + Vec3.splat(1).v));
     }
 
-    const unit_direction = vec.normalized(r.dir);
-    const a: f64 = 0.5 * (unit_direction[1] + 1.0);
-    const wat: Vec3 = .{ 0.5, 0.7, 1 };
-    return @mulAdd(Vec3, @splat(a), wat, @splat(1.0 - a));
+    const unit_direction = r.dir.normalized();
+    const a: f64 = 0.5 * (unit_direction.y() + 1.0);
+    const wat: Vec3 = .init(.{ 0.5, 0.7, 1 });
+    return .mulAdd(.splat(a), wat, .splat(1.0 - a));
 }
 
 fn hitEverything(objs: anytype, ray: Ray) ?Hit {

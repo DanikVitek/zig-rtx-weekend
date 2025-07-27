@@ -2,8 +2,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 const assert = std.debug.assert;
 
-const vec = @import("vec.zig");
-const Vec3 = vec.Vec3;
+const Vec3 = @import("Vec3.zig");
 const Ray = @import("Ray.zig");
 
 pub const Hit = struct {
@@ -20,12 +19,12 @@ pub const Hit = struct {
     ) Hit {
         if (builtin.mode == .Debug) {
             // NOTE: the parameter `outward_normal` is assumed to have unit length.
-            const one = vec.magnitudeSquared(outward_normal);
+            const one = outward_normal.magnitudeSquared();
             assert(std.math.approxEqAbs(f64, one, 1, 0.0001));
         }
 
-        const front_face = vec.dot(ray.dir, outward_normal) < 0;
-        const norm = if (front_face) outward_normal else -outward_normal;
+        const front_face = ray.dir.dot(outward_normal) < 0;
+        const norm = if (front_face) outward_normal else outward_normal.neg();
         return .{
             .p = p,
             .t = t,
@@ -47,14 +46,14 @@ pub const Sphere = struct {
     }
 
     pub fn hit(self: *const Sphere, ray: Ray, ray_tmin: f64, ray_tmax: f64) ?Hit {
-        const center = self.center;
-        const radius = self.radius;
+        const center: Vec3 = self.center;
+        const radius: f64 = self.radius;
 
-        const oc = self.center - ray.orig;
-        const a = vec.magnitudeSquared(ray.dir);
-        const h = vec.dot(ray.dir, oc);
-        const c = vec.magnitudeSquared(oc) - radius * radius;
-        const discriminant = h * h - a * c;
+        const oc: Vec3 = .init(self.center.v - ray.orig.v);
+        const a: f64 = ray.dir.magnitudeSquared();
+        const h: f64 = ray.dir.dot(oc);
+        const c: f64 = oc.magnitudeSquared() - radius * radius;
+        const discriminant: f64 = h * h - a * c;
 
         if (discriminant < 0) return null;
 
@@ -70,7 +69,7 @@ pub const Sphere = struct {
 
         const t = root;
         const p = ray.at(t);
-        const outward_normal = (p - center) / vec.splat(radius);
+        const outward_normal: Vec3 = .init((p.v - center.v) / Vec3.splat(radius).v);
         return .init(t, ray, p, outward_normal);
     }
 };
