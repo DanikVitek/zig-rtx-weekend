@@ -32,8 +32,36 @@ pub inline fn neg(self: Self) Self {
     return .{ .v = -self.v };
 }
 
+pub inline fn add(self: Self, other: Self) Self {
+    return .{ .v = self.v + other.v };
+}
+
+pub inline fn sub(self: Self, other: Self) Self {
+    return .{ .v = self.v - other.v };
+}
+
+pub inline fn mul(self: Self, other: Self) Self {
+    return .{ .v = self.v * other.v };
+}
+
+pub inline fn mulScalar(self: Self, scalar: f64) Self {
+    return .{ .v = self.v * @as(Repr, @splat(scalar)) };
+}
+
+pub inline fn div(self: Self, other: Self) Self {
+    return .{ .v = self.v / other.v };
+}
+
+pub inline fn divScalar(self: Self, scalar: f64) Self {
+    return .{ .v = self.v / @as(Repr, @splat(scalar)) };
+}
+
 pub inline fn mulAdd(a: Self, b: Self, c: Self) Self {
     return .init(@mulAdd(Repr, a.v, b.v, c.v));
+}
+
+pub inline fn mulScalarAdd(a: f64, b: Self, c: Self) Self {
+    return .init(@mulAdd(Repr, @splat(a), b.v, c.v));
 }
 
 pub fn magnitude(self: Self) f64 {

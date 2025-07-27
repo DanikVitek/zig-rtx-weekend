@@ -57,19 +57,18 @@ pub const Sphere = struct {
 
         if (discriminant < 0) return null;
 
-        const sqrtd = @sqrt(discriminant);
+        const sqrtd: f64 = @sqrt(discriminant);
 
         // find the nearest root that lies in the acceptable range
-        var root = (h - sqrtd) / a;
+        var root: f64 = (h - sqrtd) / a;
         if (root <= ray_tmin or ray_tmax <= root) {
             root = (h + sqrtd) / a;
             if (root <= ray_tmin or ray_tmax <= root)
                 return null;
         }
 
-        const t = root;
-        const p = ray.at(t);
-        const outward_normal: Vec3 = .init((p.v - center.v) / Vec3.splat(radius).v);
-        return .init(t, ray, p, outward_normal);
+        const p: Vec3 = ray.at(root);
+        const outward_normal: Vec3 = p.sub(center).divScalar(radius);
+        return .init(root, ray, p, outward_normal);
     }
 };

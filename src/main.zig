@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const Vec3 = @import("Vec3.zig");
+const Color = @import("Color.zig");
 
 const Ray = @import("Ray.zig");
 
@@ -68,7 +69,7 @@ pub fn main() !void {
             const r: Ray = .init(camera_center, ray_dir);
 
             const pixel_color = rayColor(r, world);
-            try stdout.print("{}", .{pixel_color.fmtPpmColor()});
+            try stdout.print("{}", .{pixel_color});
 
             // progress.completeOne();
         }
@@ -77,15 +78,15 @@ pub fn main() !void {
     try stdout_buf.flush();
 }
 
-fn rayColor(r: Ray, world: anytype) Vec3 {
+fn rayColor(r: Ray, world: anytype) Color {
     if (hitEverything(world, r)) |hit| {
-        return .init(Vec3.splat(0.5).v * (hit.norm.v + Vec3.splat(1).v));
+        return .init(hit.norm.add(.splat(1)).mulScalar(0.5).v);
     }
 
     const unit_direction = r.dir.normalized();
     const a: f64 = 0.5 * (unit_direction.y() + 1.0);
-    const wat: Vec3 = .init(.{ 0.5, 0.7, 1 });
-    return .mulAdd(.splat(a), wat, .splat(1.0 - a));
+    const wat: Color = .init(.{ 0.5, 0.7, 1 });
+    return .mulScalarAdd(a, wat, .splat(1.0 - a));
 }
 
 fn hitEverything(objs: anytype, ray: Ray) ?Hit {
