@@ -9,7 +9,7 @@ const Hit = objects.Hit;
 
 pub const aspect_ratio = 16.0 / 9.0;
 pub const img_width = 600;
-pub const samples_per_pixel = 20;
+pub const samples_per_pixel = 30;
 
 const img_height = blk: {
     const fwidth: comptime_float = @as(comptime_float, img_width);
@@ -112,8 +112,11 @@ fn rayColor(
     if (depth > max_recursion) return .black;
 
     if (hitWorld(world, r)) |hit| {
-        const dir: Vec3 = Vec3.randomUnit(rand_state.random()).add(hit.norm); //.randomHemisphere(hit.norm, rand_state.random());
-        return .init(rayColor(.init(hit.p, dir), world, depth + 1).mulScalar(0.1).v);
+        const rand = rand_state.random();
+        return if (hit.material.scatter(rand, r, hit)) |scatter|
+            scatter.attenuation.mul(rayColor(scatter.scattered, world, depth + 1))
+        else
+            .black;
     }
 
     const unit_direction = r.dir.normalized();

@@ -114,6 +114,15 @@ pub fn random(rand: std.Random) Self {
     } };
 }
 
+pub fn isNearZero(self: Self) bool {
+    const eps = 1e-8;
+    return @reduce(.And, @abs(self.v) < splat(eps).v);
+}
+
+pub fn reflect(self: Self, norm: Self) Self {
+    return self.sub(norm.mulScalar(2 * self.dot(norm)));
+}
+
 pub fn format(
     self: Self,
     comptime fmt: []const u8,

@@ -3,6 +3,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const Vec3 = @import("Vec3.zig");
+const Color = @import("Color.zig");
 const Ray = @import("Ray.zig");
 const Interval = @import("Interval.zig");
 
@@ -11,12 +12,14 @@ pub const Hit = struct {
     norm: Vec3,
     t: f64,
     front_face: bool,
+    material: Material,
 
     pub fn init(
         t: f64,
         ray: Ray,
         p: Vec3,
         outward_normal: Vec3,
+        material: Material,
     ) Hit {
         if (builtin.mode == .Debug) {
             // NOTE: the parameter `outward_normal` is assumed to have unit length.
@@ -31,6 +34,44 @@ pub const Hit = struct {
             .t = t,
             .front_face = front_face,
             .norm = norm,
+            .material = material,
+        };
+    }
+};
+
+pub const Material = union(enum) {
+    lambertian: struct {
+        albedo: Color,
+    },
+    metal: struct {
+        albedo: Color,
+        diffusion: Vec3 = .zero,
+    },
+
+    pub const Scatter = struct {
+        attenuation: Color,
+        scattered: Ray,
+    };
+
+    pub fn scatter(self: Material, rand: std.Random, ray_in: Ray, hit: Hit) ?Scatter {
+        return switch (self) {
+            .lambertian => |m| blk: {
+                var dir: Vec3 = hit.norm.add(.randomUnit(rand));
+
+                if (dir.isNearZero()) dir = hit.norm;
+
+                break :blk .{
+                    .scattered = .init(hit.p, dir),
+                    .attenuation = m.albedo,
+                };
+            },
+            .metal => |m| blk: {
+                const reflected: Vec3 = ray_in.dir.reflect(hit.norm);
+                break :blk .{
+                    .scattered = .init(hit.p, reflected),
+                    .attenuation = m.albedo,
+                };
+            },
         };
     }
 };
@@ -38,11 +79,14 @@ pub const Hit = struct {
 pub const Sphere = struct {
     center: Vec3,
     radius: f64,
+    material: Material,
 
-    pub fn init(center: Vec3, radius: f64) Sphere {
+    pub fn init(center: Vec3, radius: f64, material: Material) Sphere {
+        assert(radius >= 0);
         return .{
             .center = center,
             .radius = radius,
+            .material = material,
         };
     }
 
@@ -70,6 +114,6 @@ pub const Sphere = struct {
 
         const p: Vec3 = ray.at(root);
         const outward_normal: Vec3 = p.sub(center).divScalar(radius);
-        return .init(root, ray, p, outward_normal);
+        return .init(root, ray, p, outward_normal, self.material);
     }
 };
