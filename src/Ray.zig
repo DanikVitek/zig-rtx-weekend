@@ -11,5 +11,5 @@ pub fn init(orig: Vec3, dir: Vec3) Ray {
 }
 
 pub fn at(r: Ray, t: f64) Vec3 {
-    return .mulAdd(.splat(t), r.dir, r.orig);
+    return .mulScalarAdd(t, r.dir, r.orig);
 }

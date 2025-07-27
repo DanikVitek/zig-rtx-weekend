@@ -19,7 +19,7 @@ pub const Hit = struct {
     ) Hit {
         if (builtin.mode == .Debug) {
             // NOTE: the parameter `outward_normal` is assumed to have unit length.
-            const one = outward_normal.magnitudeSquared();
+            const one = outward_normal.magnitude2();
             assert(std.math.approxEqAbs(f64, one, 1, 0.0001));
         }
 
@@ -50,9 +50,9 @@ pub const Sphere = struct {
         const radius: f64 = self.radius;
 
         const oc: Vec3 = .init(self.center.v - ray.orig.v);
-        const a: f64 = ray.dir.magnitudeSquared();
+        const a: f64 = ray.dir.magnitude2();
         const h: f64 = ray.dir.dot(oc);
-        const c: f64 = oc.magnitudeSquared() - radius * radius;
+        const c: f64 = oc.magnitude2() - radius * radius;
         const discriminant: f64 = h * h - a * c;
 
         if (discriminant < 0) return null;

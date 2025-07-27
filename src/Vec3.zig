@@ -65,10 +65,10 @@ pub inline fn mulScalarAdd(a: f64, b: Self, c: Self) Self {
 }
 
 pub fn magnitude(self: Self) f64 {
-    return @sqrt(self.magnitudeSquared());
+    return @sqrt(self.magnitude2());
 }
 
-pub fn magnitudeSquared(self: Self) f64 {
+pub fn magnitude2(self: Self) f64 {
     return dot(self, self);
 }
 
