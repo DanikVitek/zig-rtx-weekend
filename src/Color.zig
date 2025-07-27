@@ -64,12 +64,8 @@ pub inline fn mulScalarAdd(x: f64, y: Self, z: Self) Self {
     return .{ .v = @mulAdd(Repr, @splat(x), y.v, z.v) };
 }
 
-pub fn darken(self: Self, amount: f64) Self {
-    return .{ .v = @mulAdd(Repr, @splat(1 - amount), self.v, @splat(0)) };
-}
-
-pub fn lighten(self: Self, amount: f64) Self {
-    return .{ .v = @mulAdd(Repr, @splat(1 + amount), self.v, @splat(0)) };
+fn linearToGamma(self: Self) Self {
+    return .{ .v = @max(@sqrt(self.v), black.v) };
 }
 
 pub fn format(
@@ -82,7 +78,7 @@ pub fn format(
     _ = options;
 
     const clamped: Repr = std.math.clamp(
-        self.v,
+        self.linearToGamma().v,
         @as(Repr, @splat(0)),
         @as(Repr, @splat(1)),
     );
