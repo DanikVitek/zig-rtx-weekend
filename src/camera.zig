@@ -8,8 +8,8 @@ const objects = @import("objects.zig");
 const Hit = objects.Hit;
 
 pub const aspect_ratio = 16.0 / 9.0;
-pub const img_width = 400;
-pub const samples_per_pixel = 10;
+pub const img_width = 600;
+pub const samples_per_pixel = 30;
 
 const img_height = blk: {
     const fwidth: comptime_float = @as(comptime_float, img_width);
@@ -39,6 +39,10 @@ const pixel00_loc: Vec3 = .init(
     viewport_upper_left.v + Vec3.splat(0.5).v * (pixel_delta_u.v + pixel_delta_v.v),
 );
 
+const max_recursion = 50;
+
+threadlocal var rand_state = std.Random.DefaultPrng.init(42);
+
 pub fn render(world: anytype) !void {
     const stdout_file = std.io.getStdOut();
     var stdout_buf = std.io.bufferedWriter(stdout_file.writer());
@@ -55,14 +59,14 @@ pub fn render(world: anytype) !void {
     try stdout.print("P3\n{d} {d}\n255\n", .{ img_width, img_height });
 
     for (0..img_height) |y| {
-        const yvec: Vec3 = .splat(@floatFromInt(y));
         for (0..img_width) |x| {
-            const xvec: Vec3 = .splat(@floatFromInt(x));
-
             var pixel: Color = .black;
             for (0..samples_per_pixel) |_| {
-                const ray: Ray = getRay(xvec, yvec);
-                pixel.v += rayColor(ray, world).v;
+                const ray: Ray = getRay(
+                    @floatFromInt(x),
+                    @floatFromInt(y),
+                );
+                pixel.v += rayColor(ray, world, 0).v;
             }
             pixel.v /= @splat(samples_per_pixel);
 
@@ -75,9 +79,17 @@ pub fn render(world: anytype) !void {
     try stdout_buf.flush();
 }
 
-fn getRay(x: Vec3, y: Vec3) Ray {
+fn getRay(x: f64, y: f64) Ray {
     const offset = sampleSquare();
-    const pixel_sample: Vec3 = .mulAdd(y.add(.splat(offset[1])), pixel_delta_v, .mulAdd(x.add(.splat(offset[0])), pixel_delta_u, pixel00_loc));
+    const pixel_sample: Vec3 = .mulAdd(
+        .splat(y + offset[1]),
+        pixel_delta_v,
+        .mulAdd(
+            .splat(x + offset[0]),
+            pixel_delta_u,
+            pixel00_loc,
+        ),
+    );
 
     const ray_origin = camera_center;
     const ray_dir: Vec3 = pixel_sample.sub(ray_origin);
@@ -85,18 +97,23 @@ fn getRay(x: Vec3, y: Vec3) Ray {
     return .init(ray_origin, ray_dir);
 }
 
-var rand_state = std.Random.DefaultPrng.init(42);
-const rand = rand_state.random();
-
 fn sampleSquare() [2]f64 {
+    const rand = rand_state.random();
     const u = rand.float(f64);
     const v = rand.float(f64);
     return .{ u - 0.5, v - 0.5 };
 }
 
-fn rayColor(r: Ray, world: anytype) Color {
-    if (hitEverything(world, r)) |hit| {
-        return .init(hit.norm.add(.splat(1)).mulScalar(0.5).v);
+fn rayColor(
+    r: Ray,
+    world: anytype,
+    depth: std.math.IntFittingRange(0, max_recursion + 1),
+) Color {
+    if (depth > max_recursion) return .black;
+
+    if (hitWorld(world, r)) |hit| {
+        const dir: Vec3 = Vec3.randomUnit(rand_state.random()).add(hit.norm); //.randomHemisphere(hit.norm, rand_state.random());
+        return .init(rayColor(.init(hit.p, dir), world, depth + 1).mulScalar(0.5).v);
     }
 
     const unit_direction = r.dir.normalized();
@@ -105,11 +122,11 @@ fn rayColor(r: Ray, world: anytype) Color {
     return .mulScalarAdd(a, wat, .splat(1.0 - a));
 }
 
-fn hitEverything(objs: anytype, ray: Ray) ?Hit {
+fn hitWorld(objs: anytype, ray: Ray) ?Hit {
     var hit: ?Hit = null;
     var closest_so_far = std.math.inf(f64);
     inline for (objs) |obj| {
-        if (obj.hit(ray, .{ .min = 0, .max = closest_so_far })) |h| {
+        if (obj.hit(ray, .{ .min = 0.001, .max = closest_so_far })) |h| {
             hit = h;
             closest_so_far = hit.?.t;
         }

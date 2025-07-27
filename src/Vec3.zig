@@ -90,6 +90,30 @@ pub fn normalized(self: Self) Self {
     return .init(self.v / Self.splat(mag).v);
 }
 
+pub fn randomUnit(rand: std.Random) Self {
+    while (true) {
+        const v: Self = .random(rand);
+        const m2 = v.magnitude2();
+        if (std.math.floatEpsAt(f64, 0) < m2 and m2 <= 1) return v.divScalar(@sqrt(m2));
+    }
+}
+
+pub fn randomHemisphere(normal: Self, rand: std.Random) Self {
+    const v = randomUnit(rand);
+    return if (v.dot(normal) > 0)
+        v
+    else
+        v.neg();
+}
+
+pub fn random(rand: std.Random) Self {
+    return .{ .v = .{
+        rand.float(f64) * 2 - 1,
+        rand.float(f64) * 2 - 1,
+        rand.float(f64) * 2 - 1,
+    } };
+}
+
 pub fn format(
     self: Self,
     comptime fmt: []const u8,
