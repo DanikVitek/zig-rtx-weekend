@@ -8,15 +8,10 @@ const Sphere = objects.Sphere;
 const camera = @import("camera.zig");
 
 pub fn main() !void {
-    // var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    // defer arena.deinit();
-    // var gpa: std.heap.ThreadSafeAllocator = .{ .child_allocator = arena.allocator() };
-    // const allocaror = gpa.allocator();
-    // const allocaror = arena.allocator();
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
 
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
-    defer if (gpa.deinit() != .ok) @panic("leak");
-    const allocator = gpa.allocator();
     var rand_state = std.Random.DefaultPrng.init(42);
     const rand = rand_state.random();
 
