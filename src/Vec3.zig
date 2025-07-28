@@ -1,4 +1,5 @@
 const std = @import("std");
+const Random = std.Random;
 
 v: Repr,
 
@@ -90,7 +91,7 @@ pub fn normalized(self: Self) Self {
     return .init(self.v / Self.splat(mag).v);
 }
 
-pub fn randomUnit(rand: std.Random) Self {
+pub fn randomUnit(rand: Random) Self {
     while (true) {
         const v: Self = .random(rand);
         const m2 = v.magnitude2();
@@ -98,7 +99,7 @@ pub fn randomUnit(rand: std.Random) Self {
     }
 }
 
-pub fn randomHemisphere(normal: Self, rand: std.Random) Self {
+pub fn randomHemisphere(normal: Self, rand: Random) Self {
     const v = randomUnit(rand);
     return if (v.dot(normal) > 0)
         v
@@ -106,7 +107,7 @@ pub fn randomHemisphere(normal: Self, rand: std.Random) Self {
         v.neg();
 }
 
-pub fn random(rand: std.Random) Self {
+pub fn random(rand: Random) Self {
     return .{ .v = .{
         rand.float(f64) * 2 - 1,
         rand.float(f64) * 2 - 1,
@@ -121,6 +122,15 @@ pub fn isNearZero(self: Self) bool {
 
 pub fn reflect(self: Self, norm: Self) Self {
     return self.sub(norm.mulScalar(2 * self.dot(norm)));
+}
+
+pub fn refract(self: Self, norm: Self, etai_over_etat: f64) Self {
+    std.debug.assert(std.math.approxEqAbs(f64, self.magnitude2(), 1, 1e-8));
+
+    const cos_theta = @min(self.neg().dot(norm), 1);
+    const r_out_perp = mulScalarAdd(cos_theta, norm, self).mulScalar(etai_over_etat);
+    const r_out_parallel = norm.mulScalar(-@sqrt(@abs(1 - r_out_perp.magnitude2())));
+    return r_out_perp.add(r_out_parallel);
 }
 
 pub fn format(

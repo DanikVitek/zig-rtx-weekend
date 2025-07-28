@@ -47,6 +47,9 @@ pub const Material = union(enum) {
         albedo: Color,
         fuzz: f64 = 0,
     },
+    dielectric: struct {
+        refraction_idx: f64,
+    },
 
     pub const Scatter = struct {
         scattered_ray: Ray,
@@ -75,6 +78,17 @@ pub const Material = union(enum) {
                     }
                 else
                     null;
+            },
+            .dielectric => |m| blk: {
+                const ri = if (hit.front_face) 1 / m.refraction_idx else m.refraction_idx;
+
+                const dir = ray_in.dir.normalized();
+                const refracted = dir.refract(hit.norm, ri);
+
+                break :blk .{
+                    .scattered_ray = .init(hit.p, refracted),
+                    .attenuation = .white,
+                };
             },
         };
     }

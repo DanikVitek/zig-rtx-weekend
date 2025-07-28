@@ -29,7 +29,7 @@ pub fn main() !void {
         Sphere.init(
             .init(.{ -1, 0, -1 }),
             0.5,
-            .{ .metal = .{ .albedo = .init(.{ 0.8, 0.8, 0.8 }), .fuzz = 0.3 } },
+            .{ .dielectric = .{ .refraction_idx = 1.5 } },
         ),
         Sphere.init(
             .init(.{ 1, 0, -1 }),
