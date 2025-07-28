@@ -15,10 +15,11 @@ const objects = @import("objects.zig");
 const Hit = objects.Hit;
 
 const aspect_ratio = 16.0 / 9.0;
-const img_width = 1080;
-const samples_per_pixel = 200;
+const img_width = 400;
+const samples_per_pixel = 100;
 const max_recursion = 50;
 const camera_center: Vec3 = .zero;
+const v_fov = 90.0;
 
 const img_height = blk: {
     const fwidth: comptime_float = @floatFromInt(img_width);
@@ -27,7 +28,11 @@ const img_height = blk: {
 };
 
 const focal_length = 1.0;
-const viewport_height = 2.0;
+const viewport_height = blk: {
+    const theta: comptime_float = v_fov * std.math.rad_per_deg;
+    const h: comptime_float = std.math.tan(theta / 2.0);
+    break :blk 2 * h * focal_length;
+};
 const viewport_width = blk: {
     const fwidth: comptime_float = @floatFromInt(img_width);
     const fheight: comptime_float = @floatFromInt(img_height);
