@@ -49,26 +49,26 @@ pub const Material = union(enum) {
     },
 
     pub const Scatter = struct {
+        scattered_ray: Ray,
         attenuation: Color,
-        scattered: Ray,
     };
 
     pub fn scatter(self: Material, rand: std.Random, ray_in: Ray, hit: Hit) ?Scatter {
         return switch (self) {
             .lambertian => |m| blk: {
-                var dir: Vec3 = hit.norm.add(.randomUnit(rand));
+                var scatter_dir: Vec3 = hit.norm.add(.randomUnit(rand));
 
-                if (dir.isNearZero()) dir = hit.norm;
+                if (scatter_dir.isNearZero()) scatter_dir = hit.norm;
 
                 break :blk .{
-                    .scattered = .init(hit.p, dir),
+                    .scattered_ray = .init(hit.p, scatter_dir),
                     .attenuation = m.albedo,
                 };
             },
             .metal => |m| blk: {
                 const reflected: Vec3 = ray_in.dir.reflect(hit.norm);
                 break :blk .{
-                    .scattered = .init(hit.p, reflected),
+                    .scattered_ray = .init(hit.p, reflected),
                     .attenuation = m.albedo,
                 };
             },

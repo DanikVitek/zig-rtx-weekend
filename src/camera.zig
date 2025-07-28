@@ -1,3 +1,5 @@
+const builtin = @import("builtin");
+
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Thread = std.Thread;
@@ -50,18 +52,22 @@ pub fn render(world: anytype, allocator: Allocator, rand: Random) !void {
     var stdout_buf = std.io.bufferedWriter(stdout_file.writer());
     const stdout = stdout_buf.writer();
 
-    var pr_buf: [1024]u8 = undefined;
-    const progress = Progress.start(.{
-        .draw_buffer = &pr_buf,
-        .estimated_total_items = img_height * img_width * 3,
-        .root_name = "drawing",
-    });
-    defer progress.end();
-
     const image = try allocator.alloc(Color, img_width * img_height);
     defer allocator.free(image);
 
     const grid = try factorizeParallelizm();
+    if (builtin.mode == .Debug) {
+        std.debug.print("grid:\n  w: {d}\n  h: {d}\n", .{ grid.width, grid.height });
+    }
+
+    var pr_buf: [1024]u8 = undefined;
+    const progress = Progress.start(.{
+        .draw_buffer = &pr_buf,
+        .estimated_total_items = grid.height * grid.width,
+        .root_name = "drawing",
+    });
+
+    defer progress.end();
     var threads: std.ArrayListUnmanaged(Thread) = try .initCapacity(
         allocator,
         std.math.mulWide(Sqrt(usize), grid.height, grid.width),
@@ -191,7 +197,7 @@ fn rayColor(
 
     if (hitWorld(world, ray)) |hit| {
         return if (hit.material.scatter(rand, ray, hit)) |scatter|
-            scatter.attenuation.mul(rayColor(scatter.scattered, rand, world, depth + 1))
+            scatter.attenuation.mul(rayColor(scatter.scattered_ray, rand, world, depth + 1))
         else
             .black;
     }
