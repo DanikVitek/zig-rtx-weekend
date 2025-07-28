@@ -20,7 +20,7 @@ pub const aspect_ratio = 16.0 / 9.0;
 pub const img_width = 1920;
 
 /// Count of random samples for each pixel
-pub const samples_per_pixel = 100;
+pub const samples_per_pixel = 1000;
 /// Maximum number of ray bounces into scene
 pub const max_recursion = 50;
 
@@ -28,17 +28,17 @@ pub const max_recursion = 50;
 pub const v_fov = 20.0; // 90.0;
 
 /// Point camera is looking from
-pub const look_from: Vec3 = .init(.{ -2, 2, 1 }); //.zero;
+pub const look_from: Vec3 = .init(.{ 13, 2, 3 }); //.zero;
 /// Point camera is looking at
-pub const look_at: Vec3 = .neg_z_axis;
+pub const look_at: Vec3 = .zero;
 
 /// Camera-relative "up" direction
 pub const v_up: Vec3 = .y_axis;
 
 /// Variation angle of rays through each pixel
-pub const defocus_angle = 10.0; //0.0;
+pub const defocus_angle = 0.6; //0.0;
 /// Distance from camera lookfrom point to plane of perfect focus
-pub const focus_dist = 3.4; //10.0;
+pub const focus_dist = 10.0; //10.0;
 
 /// Rendered image height
 const img_height = blk: {
@@ -67,7 +67,7 @@ const v: Vec3 = w.cross(u);
 /// Camera frame basis Z axis
 const w: Vec3 = look_from.sub(look_at).normalized();
 
-const defocus_radius = focus_dist * std.math.tan(std.math.degreesToRadians(defocus_angle / 2));
+const defocus_radius = focus_dist * std.math.tan(std.math.degreesToRadians(defocus_angle / 2.0));
 /// Defocus disk horizontal radius
 const defocus_disk_u: Vec3 = u.mulScalar(defocus_radius);
 /// Defocus disk vertical radius
@@ -270,7 +270,7 @@ fn rayColor(
 fn hitWorld(objs: anytype, ray: Ray) ?Hit {
     var hit: ?Hit = null;
     var closest_so_far = std.math.inf(f64);
-    inline for (objs) |obj| {
+    for (objs) |obj| {
         if (obj.hit(ray, .{ .min = 0.001, .max = closest_so_far })) |h| {
             hit = h;
             closest_so_far = hit.?.t;

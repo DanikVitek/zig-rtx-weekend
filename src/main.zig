@@ -9,58 +9,56 @@ const Material = objects.Material;
 const camera = @import("camera.zig");
 
 pub fn main() !void {
+    var rand_state = std.Random.DefaultPrng.init(42);
+    const rand = rand_state.random();
+
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var rand_state = std.Random.DefaultPrng.init(42);
-    const rand = rand_state.random();
+    var world: std.ArrayListUnmanaged(Sphere) = try .initCapacity(allocator, 22 * 22 + 4);
+    defer world.deinit(allocator);
 
-    const world = .{
-        Sphere.init(
-            .init(.{ 0, -100.5, -1 }),
-            100,
-            .{ .lambertian = .{ .albedo = .init(.{ 0.8, 0.8, 0 }) } },
-        ),
-        Sphere.init(
-            .init(.{ 0, 0, -1.2 }),
-            0.5,
-            .{ .lambertian = .{ .albedo = .init(.{ 0.1, 0.2, 0.5 }) } },
-        ),
-        Sphere.init(
-            .init(.{ -1, 0, -1 }),
-            0.5,
-            .{ .dielectric = .{ .refraction_idx = 1.5 } },
-        ),
-        Sphere.init(
-            .init(.{ -1, 0, -1 }),
-            0.4,
-            .{ .dielectric = .{ .refraction_idx = 1.0 / 1.5 } },
-        ),
-        Sphere.init(
-            .init(.{ 1, 0, -1 }),
-            0.5,
-            .{ .metal = .{ .albedo = .init(.{ 0.8, 0.6, 0.2 }), .fuzz = 0.3 } },
-        ),
-    };
+    const ground_material: Material = .{ .lambertian = .{ .albedo = .gray } };
+    world.appendAssumeCapacity(.init(
+        .init(.{ 0, -1000, 0 }),
+        1000,
+        ground_material,
+    ));
 
-    // const R = comptime std.math.cos(std.math.pi / 4.0);
+    for (0..22) |a| {
+        for (0..22) |b| {
+            const choose_mat = rand.float(f64);
+            const center: Vec3 = .init(.{
+                @as(f64, @floatFromInt(a)) - 11.0 + 0.9 * rand.float(f64),
+                0.2,
+                @as(f64, @floatFromInt(b)) - 11.0 + 0.9 * rand.float(f64),
+            });
 
-    // const material_left: Material = .{ .lambertian = .{ .albedo = .blue } };
-    // const material_right: Material = .{ .lambertian = .{ .albedo = .red } };
+            if (center.sub(.init(.{ 4, 0.2, 0 })).length() > 0.9) {
+                const sphere_mat: Material = if (choose_mat < 0.8)
+                    .{ .lambertian = .{ .albedo = .init(Vec3.random(rand).mul(.random(rand)).v) } }
+                else if (choose_mat < 0.95)
+                    .{ .metal = .{
+                        .albedo = .init(Vec3.random(rand).add(.splat(1)).divScalar(2).v),
+                        .fuzz = rand.float(f64) / 2,
+                    } }
+                else
+                    .{ .dielectric = .{ .refraction_idx = 1.5 } };
 
-    // const world = .{
-    //     Sphere.init(
-    //         .init(.{ -R, 0, -1 }),
-    //         R,
-    //         material_left,
-    //     ),
-    //     Sphere.init(
-    //         .init(.{ R, 0, -1 }),
-    //         R,
-    //         material_right,
-    //     ),
-    // };
+                world.appendAssumeCapacity(.init(center, 0.2, sphere_mat));
+            }
+        }
+    }
 
-    try camera.render(world, allocator, rand);
+    const mat1: Material = .{ .dielectric = .{ .refraction_idx = 1.5 } };
+    world.appendAssumeCapacity(.init(.init(.{ 0, 1, 0 }), 1, mat1));
+
+    const mat2: Material = .{ .lambertian = .{ .albedo = .init(.{ 0.4, 0.2, 0.1 }) } };
+    world.appendAssumeCapacity(.init(.init(.{ -4, 1, 0 }), 1, mat2));
+
+    const mat3: Material = .{ .metal = .{ .albedo = .init(.{ 0.7, 0.6, 0.5 }) } };
+    world.appendAssumeCapacity(.init(.init(.{ 4, 1, 0 }), 1, mat3));
+
+    try camera.render(world.items, allocator, rand);
 }
