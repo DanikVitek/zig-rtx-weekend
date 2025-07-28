@@ -83,7 +83,7 @@ pub const Material = union(enum) {
                 const ri = if (hit.front_face) 1 / m.refraction_idx else m.refraction_idx;
 
                 const dir = ray_in.dir.normalized();
-                const refracted = dir.refract(hit.norm, ri);
+                const refracted = dir.refract(rand, hit.norm, ri);
 
                 break :blk .{
                     .scattered_ray = .init(hit.p, refracted),

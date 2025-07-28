@@ -124,13 +124,24 @@ pub fn reflect(self: Self, norm: Self) Self {
     return self.sub(norm.mulScalar(2 * self.dot(norm)));
 }
 
-pub fn refract(self: Self, norm: Self, etai_over_etat: f64) Self {
+pub fn refract(self: Self, rand: Random, norm: Self, etai_over_etat: f64) Self {
     std.debug.assert(std.math.approxEqAbs(f64, self.magnitude2(), 1, 1e-8));
 
     const cos_theta = @min(self.neg().dot(norm), 1);
+    const sin_theta = @sqrt(1 - cos_theta * cos_theta);
+
+    const cannot_refract: bool = etai_over_etat * sin_theta > 1;
+    if (cannot_refract or reflectance(cos_theta, etai_over_etat) > rand.float(f64)) return self.reflect(norm);
+
     const r_out_perp = mulScalarAdd(cos_theta, norm, self).mulScalar(etai_over_etat);
     const r_out_parallel = norm.mulScalar(-@sqrt(@abs(1 - r_out_perp.magnitude2())));
     return r_out_perp.add(r_out_parallel);
+}
+
+fn reflectance(cos_theta: f64, refraction_idx: f64) f64 {
+    const r0 = (1 - refraction_idx) / (1 + refraction_idx);
+    const r02 = r0 * r0;
+    return r02 + (1 - r02) * std.math.pow(f64, 1 - cos_theta, 5);
 }
 
 pub fn format(

@@ -32,6 +32,11 @@ pub fn main() !void {
             .{ .dielectric = .{ .refraction_idx = 1.5 } },
         ),
         Sphere.init(
+            .init(.{ -1, 0, -1 }),
+            0.4,
+            .{ .dielectric = .{ .refraction_idx = 1.0 / 1.5 } },
+        ),
+        Sphere.init(
             .init(.{ 1, 0, -1 }),
             0.5,
             .{ .metal = .{ .albedo = .init(.{ 0.8, 0.6, 0.2 }), .fuzz = 1 } },
