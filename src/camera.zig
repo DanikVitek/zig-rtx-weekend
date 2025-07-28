@@ -14,20 +14,41 @@ const Color = @import("Color.zig");
 const objects = @import("objects.zig");
 const Hit = objects.Hit;
 
-const aspect_ratio = 16.0 / 9.0;
-const img_width = 400;
-const samples_per_pixel = 100;
-const max_recursion = 50;
-const camera_center: Vec3 = .zero;
-const v_fov = 90.0;
+/// Ratio of image width over height
+pub const aspect_ratio = 16.0 / 9.0;
 
+/// Rendered image width in pixel count
+pub const img_width = 1920;
+
+/// Count of random samples for each pixel
+pub const samples_per_pixel = 100;
+
+/// Maximum number of ray bounces into scene
+pub const max_recursion = 50;
+
+/// Vertical view angle (field of view)
+pub const v_fov = 90.0;
+
+/// Point camera is looking from
+pub const look_from: Vec3 = .init(.{ -2, 2, 1 }); //.zero;
+
+/// Point camera is looking at
+pub const look_at: Vec3 = .neg_z_axis;
+
+/// Camera-relative "up" direction
+pub const v_up: Vec3 = .y_axis;
+
+/// Rendered image height
 const img_height = blk: {
     const fwidth: comptime_float = @floatFromInt(img_width);
     const h: comptime_int = @intFromFloat(fwidth / aspect_ratio);
     break :blk if (h < 1) 1 else h;
 };
 
-const focal_length = 1.0;
+const camera_center: Vec3 = look_from;
+
+const focal_length = look_from.sub(look_at).magnitude();
+
 const viewport_height = blk: {
     const theta: comptime_float = v_fov * std.math.rad_per_deg;
     const h: comptime_float = std.math.tan(theta / 2.0);
@@ -39,17 +60,31 @@ const viewport_width = blk: {
     break :blk viewport_height * (fwidth + 0.0) / fheight;
 };
 
-const viewport_u: Vec2 = .init(.{ viewport_width, 0 });
-const viewport_v: Vec2 = .init(.{ 0, -viewport_height });
+/// Camera frame basis X axis
+const u: Vec3 = v_up.cross(w).normalized();
+/// Camera frame basis Y axis
+const v: Vec3 = w.cross(u);
+/// Camera frame basis Z axis
+const w: Vec3 = look_from.sub(look_at).normalized();
 
-const pixel_delta_u: Vec2 = viewport_u.divScalar(img_width);
-const pixel_delta_v: Vec2 = viewport_v.divScalar(img_height);
+/// Vector across viewport horizontal edge
+const viewport_u = u.mulScalar(viewport_width);
+/// Vector down viewport vertical edge
+const viewport_v = v.neg().mulScalar(viewport_height);
 
-const viewport_upper_left: Vec3 =
-    camera_center
-        .sub(.init(.{ 0, 0, focal_length }))
-        .sub(viewport_u.divScalar(2).add(viewport_v.divScalar(2)).xy0());
-const pixel00_loc: Vec3 = pixel_delta_u.add(pixel_delta_v).xy0().mulScalar(0.5).add(viewport_upper_left);
+/// Offset to pixel to the right
+const pixel_delta_u: Vec3 = viewport_u.divScalar(img_width);
+/// Offset to pixel below
+const pixel_delta_v: Vec3 = viewport_v.divScalar(img_height);
+
+/// Location of pixel (0, 0)
+const pixel00_loc: Vec3 = blk: {
+    const viewport_upper_left: Vec3 = camera_center
+        .sub(w.mulScalar(focal_length))
+        .sub(viewport_u.divScalar(2))
+        .sub(viewport_v.divScalar(2));
+    break :blk pixel_delta_u.add(pixel_delta_v).mulScalar(0.5).add(viewport_upper_left);
+};
 
 pub fn render(world: anytype, allocator: Allocator, rand: Random) !void {
     const stdout_file = std.io.getStdOut();
@@ -171,10 +206,10 @@ fn getRay(rand: Random, x: f64, y: f64) Ray {
     const offset = sampleSquare(rand);
     const pixel_sample: Vec3 = .mulScalarAdd(
         y + offset.y(),
-        pixel_delta_v.xy0(),
+        pixel_delta_v,
         .mulScalarAdd(
             x + offset.x(),
-            pixel_delta_u.xy0(),
+            pixel_delta_u,
             pixel00_loc,
         ),
     );
@@ -186,9 +221,10 @@ fn getRay(rand: Random, x: f64, y: f64) Ray {
 }
 
 fn sampleSquare(rand: Random) Vec2 {
-    const u = rand.float(f64);
-    const v = rand.float(f64);
-    return .init(.{ u - 0.5, v - 0.5 });
+    return .init(.{
+        rand.float(f64) - 0.5,
+        rand.float(f64) - 0.5,
+    });
 }
 
 fn rayColor(

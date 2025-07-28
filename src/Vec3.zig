@@ -8,6 +8,12 @@ pub const Repr = @Vector(3, f64);
 const Self = @This();
 
 pub const zero: Self = .splat(0);
+pub const x_axis: Self = .init(.{ 1, 0, 0 });
+pub const y_axis: Self = .init(.{ 0, 1, 0 });
+pub const z_axis: Self = .init(.{ 0, 0, 1 });
+pub const neg_x_axis: Self = .init(.{ -1, 0, 0 });
+pub const neg_y_axis: Self = .init(.{ 0, -1, 0 });
+pub const neg_z_axis: Self = .init(.{ 0, 0, -1 });
 
 pub inline fn x(self: Self) f64 {
     return self.v[0];
@@ -124,16 +130,16 @@ pub fn reflect(self: Self, norm: Self) Self {
     return self.sub(norm.mulScalar(2 * self.dot(norm)));
 }
 
-pub fn refract(self: Self, rand: Random, norm: Self, etai_over_etat: f64) Self {
+pub fn refract(self: Self, rand: Random, norm: Self, refraction_idx: f64) Self {
     std.debug.assert(std.math.approxEqAbs(f64, self.magnitude2(), 1, 1e-8));
 
     const cos_theta = @min(self.neg().dot(norm), 1);
     const sin_theta = @sqrt(1 - cos_theta * cos_theta);
 
-    const cannot_refract: bool = etai_over_etat * sin_theta > 1;
-    if (cannot_refract or reflectance(cos_theta, etai_over_etat) > rand.float(f64)) return self.reflect(norm);
+    const cannot_refract: bool = refraction_idx * sin_theta > 1;
+    if (cannot_refract or reflectance(cos_theta, refraction_idx) > rand.float(f64)) return self.reflect(norm);
 
-    const r_out_perp = mulScalarAdd(cos_theta, norm, self).mulScalar(etai_over_etat);
+    const r_out_perp = mulScalarAdd(cos_theta, norm, self).mulScalar(refraction_idx);
     const r_out_parallel = norm.mulScalar(-@sqrt(@abs(1 - r_out_perp.magnitude2())));
     return r_out_perp.add(r_out_parallel);
 }

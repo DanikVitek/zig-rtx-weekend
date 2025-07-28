@@ -7,6 +7,12 @@ pub const Repr = @Vector(2, f64);
 
 const Self = @This();
 
+pub const zero: Self = .splat(0);
+pub const x_axis: Self = .init(.{ 1, 0 });
+pub const y_axis: Self = .init(.{ 0, 1 });
+pub const neg_x_axis: Self = .init(.{ -1, 0 });
+pub const neg_y_axis: Self = .init(.{ 0, -1 });
+
 pub inline fn init(v: Repr) Self {
     return .{ .v = v };
 }
