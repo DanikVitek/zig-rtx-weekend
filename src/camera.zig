@@ -7,18 +7,21 @@ const Progress = std.Progress;
 const Random = std.Random;
 
 const Vec3 = @import("Vec3.zig");
+const Vec2 = @import("Vec2.zig");
 const Ray = @import("Ray.zig");
 const Color = @import("Color.zig");
 
 const objects = @import("objects.zig");
 const Hit = objects.Hit;
 
-pub const aspect_ratio = 16.0 / 9.0;
-pub const img_width = 1080;
-pub const samples_per_pixel = 100;
+const aspect_ratio = 16.0 / 9.0;
+const img_width = 1080;
+const samples_per_pixel = 200;
+const max_recursion = 50;
+const camera_center: Vec3 = .zero;
 
 const img_height = blk: {
-    const fwidth: comptime_float = @as(comptime_float, img_width);
+    const fwidth: comptime_float = @floatFromInt(img_width);
     const h: comptime_int = @intFromFloat(fwidth / aspect_ratio);
     break :blk if (h < 1) 1 else h;
 };
@@ -26,26 +29,22 @@ const img_height = blk: {
 const focal_length = 1.0;
 const viewport_height = 2.0;
 const viewport_width = blk: {
-    const fwidth: comptime_float = @as(comptime_float, img_width);
-    const fheight: comptime_float = @as(comptime_float, img_height);
+    const fwidth: comptime_float = @floatFromInt(img_width);
+    const fheight: comptime_float = @floatFromInt(img_height);
     break :blk viewport_height * (fwidth + 0.0) / fheight;
 };
-const camera_center: Vec3 = .zero;
 
-const viewport_u: Vec3 = .init(.{ viewport_width, 0, 0 });
-const viewport_v: Vec3 = .init(.{ 0, -viewport_height, 0 });
+const viewport_u: Vec2 = .init(.{ viewport_width, 0 });
+const viewport_v: Vec2 = .init(.{ 0, -viewport_height });
 
-const pixel_delta_u: Vec3 = .init(viewport_u.v / Vec3.splat(img_width).v);
-const pixel_delta_v: Vec3 = .init(viewport_v.v / Vec3.splat(img_height).v);
+const pixel_delta_u: Vec2 = viewport_u.divScalar(img_width);
+const pixel_delta_v: Vec2 = viewport_v.divScalar(img_height);
 
-const viewport_upper_left: Vec3 = .init(
-    camera_center.v - Vec3.Repr{ 0, 0, focal_length } - viewport_u.v / Vec3.splat(2).v - viewport_v.v / Vec3.splat(2).v,
-);
-const pixel00_loc: Vec3 = .init(
-    viewport_upper_left.v + Vec3.splat(0.5).v * (pixel_delta_u.v + pixel_delta_v.v),
-);
-
-const max_recursion = 50;
+const viewport_upper_left: Vec3 =
+    camera_center
+        .sub(.init(.{ 0, 0, focal_length }))
+        .sub(viewport_u.divScalar(2).add(viewport_v.divScalar(2)).xy0());
+const pixel00_loc: Vec3 = pixel_delta_u.add(pixel_delta_v).xy0().mulScalar(0.5).add(viewport_upper_left);
 
 pub fn render(world: anytype, allocator: Allocator, rand: Random) !void {
     const stdout_file = std.io.getStdOut();
@@ -64,7 +63,7 @@ pub fn render(world: anytype, allocator: Allocator, rand: Random) !void {
     const progress = Progress.start(.{
         .draw_buffer = &pr_buf,
         .estimated_total_items = grid.height * grid.width,
-        .root_name = "drawing",
+        .root_name = "rendering",
     });
 
     defer progress.end();
@@ -165,12 +164,12 @@ fn kernel(
 
 fn getRay(rand: Random, x: f64, y: f64) Ray {
     const offset = sampleSquare(rand);
-    const pixel_sample: Vec3 = .mulAdd(
-        .splat(y + offset[1]),
-        pixel_delta_v,
-        .mulAdd(
-            .splat(x + offset[0]),
-            pixel_delta_u,
+    const pixel_sample: Vec3 = .mulScalarAdd(
+        y + offset.y(),
+        pixel_delta_v.xy0(),
+        .mulScalarAdd(
+            x + offset.x(),
+            pixel_delta_u.xy0(),
             pixel00_loc,
         ),
     );
@@ -181,10 +180,10 @@ fn getRay(rand: Random, x: f64, y: f64) Ray {
     return .init(ray_origin, ray_dir);
 }
 
-fn sampleSquare(rand: Random) [2]f64 {
+fn sampleSquare(rand: Random) Vec2 {
     const u = rand.float(f64);
     const v = rand.float(f64);
-    return .{ u - 0.5, v - 0.5 };
+    return .init(.{ u - 0.5, v - 0.5 });
 }
 
 fn rayColor(

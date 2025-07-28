@@ -39,7 +39,7 @@ pub fn main() !void {
         Sphere.init(
             .init(.{ 1, 0, -1 }),
             0.5,
-            .{ .metal = .{ .albedo = .init(.{ 0.8, 0.6, 0.2 }), .fuzz = 1 } },
+            .{ .metal = .{ .albedo = .init(.{ 0.8, 0.6, 0.2 }), .fuzz = 0.3 } },
         ),
     };
     try camera.render(world, allocator, rand);
