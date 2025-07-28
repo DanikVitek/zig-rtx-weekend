@@ -45,7 +45,7 @@ pub const Material = union(enum) {
     },
     metal: struct {
         albedo: Color,
-        diffusion: Vec3 = .zero,
+        fuzz: f64 = 0,
     },
 
     pub const Scatter = struct {
@@ -66,11 +66,15 @@ pub const Material = union(enum) {
                 };
             },
             .metal => |m| blk: {
-                const reflected: Vec3 = ray_in.dir.reflect(hit.norm);
-                break :blk .{
-                    .scattered_ray = .init(hit.p, reflected),
-                    .attenuation = m.albedo,
-                };
+                var reflected: Vec3 = ray_in.dir.reflect(hit.norm);
+                reflected = .mulScalarAdd(m.fuzz, .randomUnit(rand), reflected.normalized());
+                break :blk if (reflected.dot(hit.norm) > 0)
+                    .{
+                        .scattered_ray = .init(hit.p, reflected),
+                        .attenuation = m.albedo,
+                    }
+                else
+                    null;
             },
         };
     }

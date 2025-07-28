@@ -29,12 +29,12 @@ pub fn main() !void {
         Sphere.init(
             .init(.{ -1, 0, -1 }),
             0.5,
-            .{ .metal = .{ .albedo = .init(.{ 0.8, 0.8, 0.8 }) } },
+            .{ .metal = .{ .albedo = .init(.{ 0.8, 0.8, 0.8 }), .fuzz = 0.3 } },
         ),
         Sphere.init(
             .init(.{ 1, 0, -1 }),
             0.5,
-            .{ .metal = .{ .albedo = .init(.{ 0.8, 0.6, 0.2 }) } },
+            .{ .metal = .{ .albedo = .init(.{ 0.8, 0.6, 0.2 }), .fuzz = 1 } },
         ),
     };
     try camera.render(world, allocator, rand);
