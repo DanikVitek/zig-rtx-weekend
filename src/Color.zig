@@ -88,9 +88,9 @@ pub fn format(
         clamped,
     );
 
-    const r_, const g_, const b_ = @as(
+    const bytes = @as(
         @Vector(3, u8),
         @intFromFloat(@trunc(remapped)),
     );
-    return writer.print("{d} {d} {d}\n", .{ r_, g_, b_ });
+    return writer.writeAll(&@as([3]u8, bytes));
 }

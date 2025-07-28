@@ -147,7 +147,7 @@ pub fn render(world: anytype, allocator: Allocator, rand: Random) !void {
         thread.join();
     }
 
-    try stdout.print("P3\n{d} {d}\n255\n", .{ img_width, img_height });
+    try stdout.print("P6\n{d} {d}\n255\n", .{ img_width, img_height });
     for (image) |pixel| {
         try stdout.print("{}", .{pixel});
         progress.completeOne();
