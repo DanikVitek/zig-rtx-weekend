@@ -1,5 +1,6 @@
 const std = @import("std");
 const Vec3 = @import("Vec3.zig");
+const Random = std.Random;
 
 v: Repr,
 
@@ -63,4 +64,41 @@ pub inline fn mulAdd(a: Self, b: Self, c: Self) Self {
 
 pub inline fn mulScalarAdd(a: f64, b: Self, c: Self) Self {
     return .init(@mulAdd(Repr, @splat(a), b.v, c.v));
+}
+
+pub fn magnitude(self: Self) f64 {
+    return @sqrt(self.magnitude2());
+}
+
+pub const length = magnitude;
+
+pub fn magnitude2(self: Self) f64 {
+    return dot(self, self);
+}
+
+pub const length2 = magnitude2;
+
+pub fn dot(lhs: Self, rhs: Self) f64 {
+    return @reduce(.Add, lhs.v * rhs.v);
+}
+
+pub fn normalized(self: Self) Self {
+    const mag = magnitude(self);
+    if (mag == 0) return zero;
+    return .init(self.v / Self.splat(mag).v);
+}
+
+pub fn randomInUnitDisk(rand: Random) Self {
+    while (true) {
+        const v: Self = .random(rand);
+        const m2 = v.magnitude2();
+        if (m2 <= 1) return v.divScalar(@sqrt(m2));
+    }
+}
+
+pub fn random(rand: Random) Self {
+    return .{ .v = .{
+        rand.float(f64) * 2 - 1,
+        rand.float(f64) * 2 - 1,
+    } };
 }

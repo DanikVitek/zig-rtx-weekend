@@ -75,9 +75,13 @@ pub fn magnitude(self: Self) f64 {
     return @sqrt(self.magnitude2());
 }
 
+pub const length = magnitude;
+
 pub fn magnitude2(self: Self) f64 {
     return dot(self, self);
 }
+
+pub const length2 = magnitude2;
 
 pub fn dot(lhs: Self, rhs: Self) f64 {
     return @reduce(.Add, lhs.v * rhs.v);
@@ -97,7 +101,7 @@ pub fn normalized(self: Self) Self {
     return .init(self.v / Self.splat(mag).v);
 }
 
-pub fn randomUnit(rand: Random) Self {
+pub fn randomInUnitSphere(rand: Random) Self {
     while (true) {
         const v: Self = .random(rand);
         const m2 = v.magnitude2();
@@ -105,8 +109,8 @@ pub fn randomUnit(rand: Random) Self {
     }
 }
 
-pub fn randomHemisphere(normal: Self, rand: Random) Self {
-    const v = randomUnit(rand);
+pub fn randomInHemisphere(normal: Self, rand: Random) Self {
+    const v = randomInUnitSphere(rand);
     return if (v.dot(normal) > 0)
         v
     else

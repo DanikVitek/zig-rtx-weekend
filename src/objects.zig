@@ -59,7 +59,7 @@ pub const Material = union(enum) {
     pub fn scatter(self: Material, rand: std.Random, ray_in: Ray, hit: Hit) ?Scatter {
         return switch (self) {
             .lambertian => |m| blk: {
-                var scatter_dir: Vec3 = hit.norm.add(.randomUnit(rand));
+                var scatter_dir: Vec3 = hit.norm.add(.randomInUnitSphere(rand));
 
                 if (scatter_dir.isNearZero()) scatter_dir = hit.norm;
 
@@ -70,7 +70,7 @@ pub const Material = union(enum) {
             },
             .metal => |m| blk: {
                 var reflected: Vec3 = ray_in.dir.reflect(hit.norm);
-                reflected = .mulScalarAdd(m.fuzz, .randomUnit(rand), reflected.normalized());
+                reflected = .mulScalarAdd(m.fuzz, .randomInUnitSphere(rand), reflected.normalized());
                 break :blk if (reflected.dot(hit.norm) > 0)
                     .{
                         .scattered_ray = .init(hit.p, reflected),

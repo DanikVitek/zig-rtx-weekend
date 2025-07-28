@@ -16,27 +16,29 @@ const Hit = objects.Hit;
 
 /// Ratio of image width over height
 pub const aspect_ratio = 16.0 / 9.0;
-
 /// Rendered image width in pixel count
 pub const img_width = 1920;
 
 /// Count of random samples for each pixel
 pub const samples_per_pixel = 100;
-
 /// Maximum number of ray bounces into scene
 pub const max_recursion = 50;
 
 /// Vertical view angle (field of view)
-pub const v_fov = 90.0;
+pub const v_fov = 20.0; // 90.0;
 
 /// Point camera is looking from
 pub const look_from: Vec3 = .init(.{ -2, 2, 1 }); //.zero;
-
 /// Point camera is looking at
 pub const look_at: Vec3 = .neg_z_axis;
 
 /// Camera-relative "up" direction
 pub const v_up: Vec3 = .y_axis;
+
+/// Variation angle of rays through each pixel
+pub const defocus_angle = 10.0; //0.0;
+/// Distance from camera lookfrom point to plane of perfect focus
+pub const focus_dist = 3.4; //10.0;
 
 /// Rendered image height
 const img_height = blk: {
@@ -47,12 +49,10 @@ const img_height = blk: {
 
 const camera_center: Vec3 = look_from;
 
-const focal_length = look_from.sub(look_at).magnitude();
-
 const viewport_height = blk: {
-    const theta: comptime_float = v_fov * std.math.rad_per_deg;
+    const theta: comptime_float = std.math.degreesToRadians(v_fov);
     const h: comptime_float = std.math.tan(theta / 2.0);
-    break :blk 2 * h * focal_length;
+    break :blk 2 * h * focus_dist;
 };
 const viewport_width = blk: {
     const fwidth: comptime_float = @floatFromInt(img_width);
@@ -67,6 +67,12 @@ const v: Vec3 = w.cross(u);
 /// Camera frame basis Z axis
 const w: Vec3 = look_from.sub(look_at).normalized();
 
+const defocus_radius = focus_dist * std.math.tan(std.math.degreesToRadians(defocus_angle / 2));
+/// Defocus disk horizontal radius
+const defocus_disk_u: Vec3 = u.mulScalar(defocus_radius);
+/// Defocus disk vertical radius
+const defocus_disk_v: Vec3 = v.mulScalar(defocus_radius);
+
 /// Vector across viewport horizontal edge
 const viewport_u = u.mulScalar(viewport_width);
 /// Vector down viewport vertical edge
@@ -80,7 +86,7 @@ const pixel_delta_v: Vec3 = viewport_v.divScalar(img_height);
 /// Location of pixel (0, 0)
 const pixel00_loc: Vec3 = blk: {
     const viewport_upper_left: Vec3 = camera_center
-        .sub(w.mulScalar(focal_length))
+        .sub(w.mulScalar(focus_dist))
         .sub(viewport_u.divScalar(2))
         .sub(viewport_v.divScalar(2));
     break :blk pixel_delta_u.add(pixel_delta_v).mulScalar(0.5).add(viewport_upper_left);
@@ -214,7 +220,7 @@ fn getRay(rand: Random, x: f64, y: f64) Ray {
         ),
     );
 
-    const ray_origin = camera_center;
+    const ray_origin = if (defocus_angle <= 0) camera_center else defocusDiskScample(rand);
     const ray_dir: Vec3 = pixel_sample.sub(ray_origin);
 
     return .init(ray_origin, ray_dir);
@@ -225,6 +231,19 @@ fn sampleSquare(rand: Random) Vec2 {
         rand.float(f64) - 0.5,
         rand.float(f64) - 0.5,
     });
+}
+
+fn defocusDiskScample(rand: Random) Vec3 {
+    const p: Vec2 = .randomInUnitDisk(rand);
+    return .mulScalarAdd(
+        p.x(),
+        defocus_disk_u,
+        .mulScalarAdd(
+            p.y(),
+            defocus_disk_v,
+            camera_center,
+        ),
+    );
 }
 
 fn rayColor(
