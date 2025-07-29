@@ -14,13 +14,15 @@ const Color = @import("Color.zig");
 const objects = @import("objects.zig");
 const Hit = objects.Hit;
 
+pub const image_path = "./img.ppm";
+
 /// Ratio of image width over height
 pub const aspect_ratio = 16.0 / 9.0;
 /// Rendered image width in pixel count
 pub const img_width = 1920;
 
 /// Count of random samples for each pixel
-pub const samples_per_pixel = 1000;
+pub const samples_per_pixel = 10;
 /// Maximum number of ray bounces into scene
 pub const max_recursion = 50;
 
@@ -99,36 +101,37 @@ pub fn render(world: anytype, allocator: Allocator, rand: Random) !void {
 
     const image = try allocator.alloc(Color, img_width * img_height);
     defer allocator.free(image);
+    @memset(image, .black);
 
     const grid = try factorizeParallelizm();
     if (builtin.mode == .Debug) {
         std.debug.print("grid:\n  w: {d}\n  h: {d}\n", .{ grid.width, grid.height });
     }
 
-    var pr_buf: [1024]u8 = undefined;
     const progress = Progress.start(.{
-        .draw_buffer = &pr_buf,
-        .estimated_total_items = grid.height * grid.width,
+        .estimated_total_items = grid.height * grid.width * grid.height * grid.width,
         .root_name = "rendering",
     });
 
     defer progress.end();
-    var threads: std.ArrayListUnmanaged(Thread) = try .initCapacity(
-        allocator,
-        std.math.mulWide(Sqrt(usize), grid.height, grid.width),
-    );
-    defer threads.deinit(allocator);
+    var task_queue: TaskQueue(kernel) = undefined;
+    try task_queue.init(allocator, grid.height * grid.height * grid.width * grid.width);
+    errdefer task_queue.terminate(allocator);
 
-    for (0..grid.height) |i| {
-        for (0..grid.width) |j| {
-            const kernel_x = j * (img_width / grid.width);
-            const kernel_y = i * (img_height / grid.height);
-            const kernel_width = @min(kernel_x + (img_width / grid.width), img_width) - kernel_x;
-            const kernel_height = @min(kernel_y + (img_height / grid.height), img_height) - kernel_y;
-            const thread = try Thread.spawn(
-                .{ .allocator = allocator },
-                kernel,
-                .{
+    const whole_image_grid_cell_width = img_width / (grid.width * grid.width);
+    const remainder_image_grid_cell_width = img_width % (grid.width * grid.width);
+    const whole_image_grid_cell_height = img_height / (grid.height * grid.height);
+    const remainder_image_grid_cell_height = img_height % (grid.height * grid.height);
+    for (0..grid.height * grid.height) |i| {
+        for (0..grid.width * grid.width) |j| {
+            const kernel_x = j * (whole_image_grid_cell_width + @intFromBool(j < remainder_image_grid_cell_width + 1));
+            const kernel_y = i * (whole_image_grid_cell_height + @intFromBool(i < remainder_image_grid_cell_height + 1));
+
+            const kernel_width = whole_image_grid_cell_width + @intFromBool(j < remainder_image_grid_cell_width);
+            const kernel_height = whole_image_grid_cell_height + @intFromBool(i < remainder_image_grid_cell_height);
+
+            try task_queue.addTask(allocator, .{
+                .args = .{
                     kernel_x,
                     kernel_y,
                     kernel_width,
@@ -138,14 +141,11 @@ pub fn render(world: anytype, allocator: Allocator, rand: Random) !void {
                     progress,
                     rand,
                 },
-            );
-            threads.appendAssumeCapacity(thread);
+            });
         }
     }
 
-    for (threads.items) |thread| {
-        thread.join();
-    }
+    task_queue.runToCompletion(allocator);
 
     try stdout.print("P6\n{d} {d}\n255\n", .{ img_width, img_height });
     for (image) |pixel| {
@@ -172,19 +172,132 @@ fn Sqrt(comptime T: type) type {
     };
 }
 
+fn TaskQueue(comptime func: anytype) type {
+    return struct {
+        mutex: Mutex = .{},
+        tasks: Tasks = .empty,
+        run_to_exhaustion: AtomicBool = .init(false),
+        kill: AtomicBool = .init(false),
+        threads: []Thread,
+
+        const Self = @This();
+        const Mutex = std.Thread.Mutex;
+        const AtomicBool = std.atomic.Value(bool);
+        const Tasks = std.ArrayListUnmanaged(Task(func));
+
+        pub fn init(self: *Self, allocator: Allocator, tasks_cap: ?usize) !void {
+            const parallelism = try Thread.getCpuCount();
+            const threads = try allocator.alloc(Thread, parallelism);
+
+            self.* = .{ .threads = threads };
+            if (tasks_cap) |cap| {
+                self.tasks = try Tasks.initCapacity(allocator, cap);
+            }
+
+            std.debug.print("Parallelism: {d}\n", .{parallelism});
+            for (0..parallelism) |i| {
+                threads[i] = try Thread.spawn(
+                    .{ .allocator = allocator },
+                    struct {
+                        fn f(
+                            tasks: *Tasks,
+                            mutex: *Mutex,
+                            kill: *const AtomicBool,
+                            run_to_exhaustion: *const AtomicBool,
+                        ) Task(func).Return {
+                            while (!kill.load(.acquire)) {
+                                if (mutex.tryLock()) {
+                                    const maybe_task = blk: {
+                                        defer mutex.unlock();
+                                        break :blk tasks.pop();
+                                    };
+                                    if (maybe_task) |task| {
+                                        if (@typeInfo(Task(func).Return) == .error_union) {
+                                            if (Task(func).Return == !void) {
+                                                try task.run();
+                                            } else {
+                                                @compileError("expected func to return `void` or `!void`");
+                                            }
+                                        } else if (Task(func).Return == void) {
+                                            task.run();
+                                        } else {
+                                            @compileError("expected func to return `void` or `!void`");
+                                        }
+                                    } else if (run_to_exhaustion.load(.acquire)) break;
+                                }
+                            }
+                        }
+                    }.f,
+                    .{
+                        &self.tasks,
+                        &self.mutex,
+                        &self.kill,
+                        &self.run_to_exhaustion,
+                    },
+                );
+            }
+        }
+
+        pub fn addTask(self: *Self, allocator: Allocator, task: Task(func)) !void {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            try self.tasks.append(allocator, task);
+        }
+
+        pub fn addTaskAssumeCapacity(self: *Self, task: Task(func)) void {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            self.tasks.appendAssumeCapacity(task);
+        }
+
+        pub fn runToCompletion(self: *Self, allocator: Allocator) void {
+            defer allocator.free(self.threads);
+            self.run_to_exhaustion.store(true, .release);
+            for (self.threads) |thread| {
+                thread.join();
+            }
+        }
+
+        pub fn terminate(self: *Self, allocator: Allocator) void {
+            defer allocator.free(self.threads);
+            self.kill.store(true, .release);
+            for (self.threads) |thread| {
+                thread.join();
+            }
+        }
+    };
+}
+
+fn Task(comptime func: anytype) type {
+    const Fn = @TypeOf(func);
+    return struct {
+        args: Args,
+
+        pub const Args = std.meta.ArgsTuple(@TypeOf(func));
+        pub const Return = switch (@typeInfo(Fn)) {
+            .@"fn" => |info| info.return_type.?,
+            else => @compileError("Expected `func` to be a function"),
+        };
+
+        fn run(self: @This()) Return {
+            return @call(.auto, func, self.args);
+        }
+    };
+}
+
 fn kernel(
     kx: usize,
     ky: usize,
     kw: usize,
     kh: usize,
-    world: anytype,
+    world: []const objects.Sphere,
     image: []Color,
     progress: std.Progress.Node,
     rand: Random,
 ) void {
-    const fmt = "kernel({d}, {d})";
-    var name_buf: [std.fmt.count(fmt, .{std.math.maxInt(usize)} ** 2)]u8 = undefined;
-    const name: []const u8 = std.fmt.bufPrint(&name_buf, fmt, .{ kx, ky }) catch unreachable;
+    const fmt = "T: {d}; x: {d}, y: {d}, w: {d}, h: {d}";
+    var name_buf: [std.fmt.count(fmt, .{std.math.maxInt(Thread.Id)} ++ .{std.math.maxInt(usize)} ** 4)]u8 = undefined;
+    const name: []const u8 = std.fmt.bufPrint(&name_buf, fmt, .{ Thread.getCurrentId(), kx, ky, kw, kh }) catch unreachable;
 
     const kprogress = progress.start(name, kw * kh * samples_per_pixel);
     defer kprogress.end();
