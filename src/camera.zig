@@ -15,8 +15,6 @@ const Color = @import("Color.zig");
 const objects = @import("objects.zig");
 const Hit = objects.Hit;
 
-pub const image_path = "./img.ppm";
-
 /// Ratio of image width over height
 pub const aspect_ratio = 16.0 / 9.0;
 /// Rendered image width in pixel count
@@ -95,7 +93,12 @@ const pixel00_loc: Vec3 = blk: {
     break :blk pixel_delta_u.add(pixel_delta_v).mulScalar(0.5).add(viewport_upper_left);
 };
 
-pub fn render(world: anytype, allocator: Allocator, rand: Random) !void {
+pub fn render(
+    allocator: Allocator,
+    rand: Random,
+    image_path: []const u8,
+    world: anytype,
+) !void {
     const file = try std.fs.cwd().createFile(image_path, .{
         .read = true,
         .truncate = false,

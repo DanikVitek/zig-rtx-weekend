@@ -16,6 +16,15 @@ pub fn main() !void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
+    var args = try std.process.argsWithAllocator(allocator);
+    defer args.deinit();
+    _ = args.skip(); // skip program name
+    const image_path = args.next() orelse "./img.ppm";
+    if (!std.mem.endsWith(u8, image_path, ".ppm")) {
+        std.debug.print("Supports only PPM image format", .{});
+        return error.UnsupportedImageFormat;
+    }
+
     var world: std.ArrayListUnmanaged(Sphere) = try .initCapacity(allocator, 22 * 22 + 4);
     defer world.deinit(allocator);
 
@@ -60,5 +69,5 @@ pub fn main() !void {
     const mat3: Material = .{ .metal = .{ .albedo = .init(.{ 0.7, 0.6, 0.5 }) } };
     world.appendAssumeCapacity(.init(.init(.{ 4, 1, 0 }), 1, mat3));
 
-    try camera.render(world.items, allocator, rand);
+    try camera.render(allocator, rand, image_path, world.items);
 }
