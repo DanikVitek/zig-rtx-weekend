@@ -4,10 +4,14 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // requiret to support mmap
+    const link_libc = target.result.os.tag == .windows or target.result.os.tag == .wasi;
+
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = link_libc,
     });
 
     const exe = b.addExecutable(.{

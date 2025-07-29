@@ -1,6 +1,7 @@
 const builtin = @import("builtin");
 
 const std = @import("std");
+const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const Thread = std.Thread;
 const Progress = std.Progress;
@@ -22,7 +23,7 @@ pub const aspect_ratio = 16.0 / 9.0;
 pub const img_width = 1920;
 
 /// Count of random samples for each pixel
-pub const samples_per_pixel = 10;
+pub const samples_per_pixel = 1000;
 /// Maximum number of ray bounces into scene
 pub const max_recursion = 50;
 
@@ -95,13 +96,40 @@ const pixel00_loc: Vec3 = blk: {
 };
 
 pub fn render(world: anytype, allocator: Allocator, rand: Random) !void {
-    const stdout_file = std.io.getStdOut();
-    var stdout_buf = std.io.bufferedWriter(stdout_file.writer());
-    const stdout = stdout_buf.writer();
+    const file = try std.fs.cwd().createFile(image_path, .{
+        .read = true,
+        .truncate = false,
+        .exclusive = false,
+    });
+    defer file.close();
 
-    const image = try allocator.alloc(Color, img_width * img_height);
-    defer allocator.free(image);
-    @memset(image, .black);
+    const header_format = "P6\n{d} {d}\n255\n";
+    var buf: [std.fmt.count(header_format, .{std.math.maxInt(u32)} ** 2)]u8 = undefined;
+    const header: []const u8 = try std.fmt.bufPrint(&buf, header_format, .{ img_width, img_height });
+
+    try file.setEndPos(header.len + img_width * img_height * 3);
+
+    if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+        const metadata = try file.metadata();
+        assert(metadata.size() == header.len + img_height * img_width * 3);
+    }
+
+    const ptr = try std.posix.mmap(
+        null,
+        header.len + img_width * img_height * 3,
+        std.posix.PROT.READ | std.posix.PROT.WRITE,
+        .{ .TYPE = .SHARED },
+        file.handle,
+        0,
+    );
+    defer std.posix.munmap(ptr);
+
+    @memcpy(ptr[0..header.len], header);
+    const image = std.mem.bytesAsSlice([3]u8, ptr[header.len..]);
+
+    // const image = try allocator.alloc(Color, img_width * img_height);
+    // defer allocator.free(image);
+    // @memset(image, .{0} ** 3);
 
     const grid = try factorizeParallelizm();
     if (builtin.mode == .Debug) {
@@ -146,14 +174,6 @@ pub fn render(world: anytype, allocator: Allocator, rand: Random) !void {
     }
 
     task_queue.runToCompletion(allocator);
-
-    try stdout.print("P6\n{d} {d}\n255\n", .{ img_width, img_height });
-    for (image) |pixel| {
-        try stdout.print("{}", .{pixel});
-        progress.completeOne();
-    }
-
-    try stdout_buf.flush();
 }
 
 fn factorizeParallelizm() !struct { width: Sqrt(usize), height: Sqrt(usize) } {
@@ -291,7 +311,7 @@ fn kernel(
     kw: usize,
     kh: usize,
     world: []const objects.Sphere,
-    image: []Color,
+    image: [][3]u8,
     progress: std.Progress.Node,
     rand: Random,
 ) void {
@@ -316,7 +336,9 @@ fn kernel(
                 kprogress.completeOne();
             }
             pixel.v /= @splat(samples_per_pixel);
-            image[y * img_width + x] = pixel;
+            var pixel_bytes: [3]u8 = undefined;
+            _ = std.fmt.bufPrint(&pixel_bytes, "{}", .{pixel}) catch unreachable;
+            image[y * img_width + x] = pixel_bytes;
         }
     }
 }
