@@ -21,7 +21,7 @@ pub const aspect_ratio = 16.0 / 9.0;
 pub const img_width = 1920;
 
 /// Count of random samples for each pixel
-pub const samples_per_pixel = 1000;
+pub const samples_per_pixel = 100;
 /// Maximum number of ray bounces into scene
 pub const max_recursion = 50;
 
@@ -117,15 +117,14 @@ pub fn render(
         assert(metadata.size() == header.len + img_height * img_width * 3);
     }
 
-    const ptr = try std.posix.mmap(
-        null,
-        header.len + img_width * img_height * 3,
-        std.posix.PROT.READ | std.posix.PROT.WRITE,
-        .{ .TYPE = .SHARED },
-        file.handle,
-        0,
-    );
-    defer std.posix.munmap(ptr);
+    const ptr, const file_mapping = blk: {
+        const result = try mmapImageFile(file, header.len + img_width * img_height * 3);
+        break :blk if (@typeInfo(@TypeOf(result)) == .@"struct")
+            result
+        else
+            .{ result, null };
+    };
+    defer if (builtin.os.tag != .windows) munmapImageFile(ptr);
 
     @memcpy(ptr[0..header.len], header);
     const image = std.mem.bytesAsSlice([3]u8, ptr[header.len..]);
@@ -177,6 +176,8 @@ pub fn render(
     }
 
     task_queue.runToCompletion(allocator);
+
+    if (builtin.os.tag == .windows) try munmapImageFile(ptr, file_mapping);
 }
 
 fn factorizeParallelizm() !struct { width: Sqrt(usize), height: Sqrt(usize) } {
@@ -193,6 +194,115 @@ fn Sqrt(comptime T: type) type {
         .int => |info| std.meta.Int(.unsigned, (info.bits + 1) / 2),
         else => T,
     };
+}
+
+fn kernel(
+    kx: usize,
+    ky: usize,
+    kw: usize,
+    kh: usize,
+    world: []const objects.Sphere,
+    image: [][3]u8,
+    progress: std.Progress.Node,
+    rand: Random,
+) void {
+    const fmt = "T: {d}; x: {d}, y: {d}, w: {d}, h: {d}";
+    var name_buf: [std.fmt.count(fmt, .{std.math.maxInt(Thread.Id)} ++ .{std.math.maxInt(usize)} ** 4)]u8 = undefined;
+    const name: []const u8 = std.fmt.bufPrint(&name_buf, fmt, .{ Thread.getCurrentId(), kx, ky, kw, kh }) catch unreachable;
+
+    const kprogress = progress.start(name, kw * kh * samples_per_pixel);
+    defer kprogress.end();
+
+    for (kx..kx + kw) |x| {
+        for (ky..ky + kh) |y| {
+            var pixel: Color = .black;
+            for (0..samples_per_pixel) |_| {
+                const ray: Ray = getRay(
+                    rand,
+                    @floatFromInt(x),
+                    @floatFromInt(y),
+                );
+                pixel.v += rayColor(ray, rand, world, 0).v;
+
+                kprogress.completeOne();
+            }
+            pixel.v /= @splat(samples_per_pixel);
+            var pixel_bytes: [3]u8 = undefined;
+            _ = std.fmt.bufPrint(&pixel_bytes, "{}", .{pixel}) catch unreachable;
+            image[y * img_width + x] = pixel_bytes;
+        }
+    }
+}
+
+fn getRay(rand: Random, x: f64, y: f64) Ray {
+    const offset = sampleSquare(rand);
+    const pixel_sample: Vec3 = .mulScalarAdd(
+        y + offset.y(),
+        pixel_delta_v,
+        .mulScalarAdd(
+            x + offset.x(),
+            pixel_delta_u,
+            pixel00_loc,
+        ),
+    );
+
+    const ray_origin = if (defocus_angle <= 0) camera_center else defocusDiskScample(rand);
+    const ray_dir: Vec3 = pixel_sample.sub(ray_origin);
+
+    return .init(ray_origin, ray_dir);
+}
+
+fn sampleSquare(rand: Random) Vec2 {
+    return .init(.{
+        rand.float(f64) - 0.5,
+        rand.float(f64) - 0.5,
+    });
+}
+
+fn defocusDiskScample(rand: Random) Vec3 {
+    const p: Vec2 = .randomInUnitDisk(rand);
+    return .mulScalarAdd(
+        p.x(),
+        defocus_disk_u,
+        .mulScalarAdd(
+            p.y(),
+            defocus_disk_v,
+            camera_center,
+        ),
+    );
+}
+
+fn rayColor(
+    ray: Ray,
+    rand: Random,
+    world: anytype,
+    depth: std.math.IntFittingRange(0, max_recursion + 1),
+) Color {
+    if (depth > max_recursion) return .black;
+
+    if (hitWorld(world, ray)) |hit| {
+        return if (hit.material.scatter(rand, ray, hit)) |scatter|
+            scatter.attenuation.mul(rayColor(scatter.scattered_ray, rand, world, depth + 1))
+        else
+            .black;
+    }
+
+    const unit_direction = ray.dir.normalized();
+    const a: f64 = 0.5 * (unit_direction.y() + 1.0);
+    const wat: Color = .init(.{ 0.5, 0.7, 1 });
+    return .mulScalarAdd(a, wat, .splat(1.0 - a));
+}
+
+fn hitWorld(objs: anytype, ray: Ray) ?Hit {
+    var hit: ?Hit = null;
+    var closest_so_far = std.math.inf(f64);
+    for (objs) |obj| {
+        if (obj.hit(ray, .{ .min = 0.001, .max = closest_so_far })) |h| {
+            hit = h;
+            closest_so_far = hit.?.t;
+        }
+    }
+    return hit;
 }
 
 fn TaskQueue(comptime func: anytype) type {
@@ -308,111 +418,81 @@ fn Task(comptime func: anytype) type {
     };
 }
 
-fn kernel(
-    kx: usize,
-    ky: usize,
-    kw: usize,
-    kh: usize,
-    world: []const objects.Sphere,
-    image: [][3]u8,
-    progress: std.Progress.Node,
-    rand: Random,
-) void {
-    const fmt = "T: {d}; x: {d}, y: {d}, w: {d}, h: {d}";
-    var name_buf: [std.fmt.count(fmt, .{std.math.maxInt(Thread.Id)} ++ .{std.math.maxInt(usize)} ** 4)]u8 = undefined;
-    const name: []const u8 = std.fmt.bufPrint(&name_buf, fmt, .{ Thread.getCurrentId(), kx, ky, kw, kh }) catch unreachable;
+fn mmapImageFile(file: std.fs.File, size: usize) !switch (builtin.os.tag) {
+    .wasi => @compileError("unsupported"),
+    .windows => struct { []u8, @import("windows.zig").HANDLE },
+    else => []align(std.heap.page_size_min) u8,
+} {
+    return switch (builtin.os.tag) {
+        .windows => blk: {
+            const windows = @import("windows.zig");
+            const DWORD = windows.DWORD;
+            const CreateFileMapping = windows.CreateFileMappingA;
+            const MapViewOfFile = windows.MapViewOfFile;
+            const CloseHandle = windows.CloseHandle;
 
-    const kprogress = progress.start(name, kw * kh * samples_per_pixel);
-    defer kprogress.end();
+            const file_mapping: windows.HANDLE = CreateFileMapping(
+                file.handle,
+                null,
+                .PAGE_READWRITE,
+                @as(DWORD, @intCast(size >> 32)),
+                @as(DWORD, @intCast(size & std.math.maxInt(DWORD))),
+                null,
+            ) orelse {
+                const err = std.os.windows.GetLastError();
+                std.log.err("Failed to create file mapping ({d})", .{@intFromEnum(err)});
+                break :blk error.FileMappingFailed;
+            };
+            errdefer CloseHandle(file_mapping);
 
-    for (kx..kx + kw) |x| {
-        for (ky..ky + kh) |y| {
-            var pixel: Color = .black;
-            for (0..samples_per_pixel) |_| {
-                const ray: Ray = getRay(
-                    rand,
-                    @floatFromInt(x),
-                    @floatFromInt(y),
-                );
-                pixel.v += rayColor(ray, rand, world, 0).v;
+            const ptr = MapViewOfFile(
+                file_mapping,
+                windows.FILE_MAP_ALL_ACCESS,
+                0,
+                0,
+                size,
+            ) orelse {
+                const err = std.os.windows.GetLastError();
+                std.log.err("Failed to map view of file ({d})", .{@intFromEnum(err)});
+                break :blk error.FileMappingFailed;
+            };
 
-                kprogress.completeOne();
+            const many_ptr: [*]u8 = @ptrCast(ptr);
+            return .{ many_ptr[0..size], file_mapping };
+        },
+        else => try std.posix.mmap(
+            null,
+            size,
+            std.posix.PROT.READ | std.posix.PROT.WRITE,
+            .{ .TYPE = .SHARED },
+            file.handle,
+            0,
+        ),
+    };
+}
+
+const munmapImageFile = switch (builtin.os.tag) {
+    .wasi => @compileError("unsupported"),
+    .windows => struct {
+        fn f(ptr: []const u8, file_mapping: std.os.windows.HANDLE) !void {
+            const windows = @import("windows.zig");
+            const UnmapViewOfFile = windows.UnmapViewOfFile;
+            const FlushViewOfFile = windows.FlushViewOfFile;
+            const CloseHandle = windows.CloseHandle;
+
+            if (UnmapViewOfFile(ptr.ptr) == 0) {
+                const err = std.os.windows.GetLastError();
+                std.log.err("Failed to unmap view of file ({d})", .{@intFromEnum(err)});
+                return error.UnmapViewOfFileFailed;
             }
-            pixel.v /= @splat(samples_per_pixel);
-            var pixel_bytes: [3]u8 = undefined;
-            _ = std.fmt.bufPrint(&pixel_bytes, "{}", .{pixel}) catch unreachable;
-            image[y * img_width + x] = pixel_bytes;
+
+            if (FlushViewOfFile(ptr.ptr, 0) == 0) {
+                const err = std.os.windows.GetLastError();
+                std.log.err("Failed to flush view of file ({d})", .{@intFromEnum(err)});
+                return error.FlushViewOfFileFailed;
+            }
+            CloseHandle(file_mapping);
         }
-    }
-}
-
-fn getRay(rand: Random, x: f64, y: f64) Ray {
-    const offset = sampleSquare(rand);
-    const pixel_sample: Vec3 = .mulScalarAdd(
-        y + offset.y(),
-        pixel_delta_v,
-        .mulScalarAdd(
-            x + offset.x(),
-            pixel_delta_u,
-            pixel00_loc,
-        ),
-    );
-
-    const ray_origin = if (defocus_angle <= 0) camera_center else defocusDiskScample(rand);
-    const ray_dir: Vec3 = pixel_sample.sub(ray_origin);
-
-    return .init(ray_origin, ray_dir);
-}
-
-fn sampleSquare(rand: Random) Vec2 {
-    return .init(.{
-        rand.float(f64) - 0.5,
-        rand.float(f64) - 0.5,
-    });
-}
-
-fn defocusDiskScample(rand: Random) Vec3 {
-    const p: Vec2 = .randomInUnitDisk(rand);
-    return .mulScalarAdd(
-        p.x(),
-        defocus_disk_u,
-        .mulScalarAdd(
-            p.y(),
-            defocus_disk_v,
-            camera_center,
-        ),
-    );
-}
-
-fn rayColor(
-    ray: Ray,
-    rand: Random,
-    world: anytype,
-    depth: std.math.IntFittingRange(0, max_recursion + 1),
-) Color {
-    if (depth > max_recursion) return .black;
-
-    if (hitWorld(world, ray)) |hit| {
-        return if (hit.material.scatter(rand, ray, hit)) |scatter|
-            scatter.attenuation.mul(rayColor(scatter.scattered_ray, rand, world, depth + 1))
-        else
-            .black;
-    }
-
-    const unit_direction = ray.dir.normalized();
-    const a: f64 = 0.5 * (unit_direction.y() + 1.0);
-    const wat: Color = .init(.{ 0.5, 0.7, 1 });
-    return .mulScalarAdd(a, wat, .splat(1.0 - a));
-}
-
-fn hitWorld(objs: anytype, ray: Ray) ?Hit {
-    var hit: ?Hit = null;
-    var closest_so_far = std.math.inf(f64);
-    for (objs) |obj| {
-        if (obj.hit(ray, .{ .min = 0.001, .max = closest_so_far })) |h| {
-            hit = h;
-            closest_so_far = hit.?.t;
-        }
-    }
-    return hit;
-}
+    }.f,
+    else => std.posix.munmap,
+};
