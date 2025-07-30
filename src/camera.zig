@@ -124,7 +124,10 @@ pub fn render(
         else
             .{ result, null };
     };
-    defer if (builtin.os.tag != .windows) munmapImageFile(ptr);
+    defer switch (builtin.os.tag) {
+        .windows => munmapImageFile(ptr, file_mapping),
+        else => munmapImageFile(ptr),
+    };
 
     @memcpy(ptr[0..header.len], header);
     const image = std.mem.bytesAsSlice([3]u8, ptr[header.len..]);
@@ -176,17 +179,18 @@ pub fn render(
     }
 
     task_queue.runToCompletion(allocator);
-
-    if (builtin.os.tag == .windows) try munmapImageFile(ptr, file_mapping);
 }
 
 fn factorizeParallelizm() !struct { width: Sqrt(usize), height: Sqrt(usize) } {
     const parallelizm: usize = try Thread.getCpuCount();
 
-    const width: Sqrt(usize) = std.math.sqrt(parallelizm);
-    const height: Sqrt(usize) = @intCast(try std.math.divExact(usize, parallelizm, width));
+    const dim_a: Sqrt(usize) = std.math.sqrt(parallelizm);
+    const dim_b: Sqrt(usize) = @intCast(try std.math.divExact(usize, parallelizm, dim_a));
 
-    return .{ .width = @max(width, height), .height = @min(width, height) };
+    return .{
+        .width = if (aspect_ratio > 1) @max(dim_a, dim_b) else @min(dim_a, dim_b),
+        .height = if (aspect_ratio > 1) @min(dim_a, dim_b) else @max(dim_a, dim_b),
+    };
 }
 
 fn Sqrt(comptime T: type) type {
@@ -474,7 +478,7 @@ fn mmapImageFile(file: std.fs.File, size: usize) !switch (builtin.os.tag) {
 const munmapImageFile = switch (builtin.os.tag) {
     .wasi => @compileError("unsupported"),
     .windows => struct {
-        fn f(ptr: []const u8, file_mapping: std.os.windows.HANDLE) !void {
+        fn f(ptr: []const u8, file_mapping: std.os.windows.HANDLE) void {
             const windows = @import("windows.zig");
             const UnmapViewOfFile = windows.UnmapViewOfFile;
             const FlushViewOfFile = windows.FlushViewOfFile;
@@ -483,13 +487,13 @@ const munmapImageFile = switch (builtin.os.tag) {
             if (UnmapViewOfFile(ptr.ptr) == 0) {
                 const err = std.os.windows.GetLastError();
                 std.log.err("Failed to unmap view of file ({d})", .{@intFromEnum(err)});
-                return error.UnmapViewOfFileFailed;
+                return;
             }
 
             if (FlushViewOfFile(ptr.ptr, 0) == 0) {
                 const err = std.os.windows.GetLastError();
                 std.log.err("Failed to flush view of file ({d})", .{@intFromEnum(err)});
-                return error.FlushViewOfFileFailed;
+                return;
             }
             CloseHandle(file_mapping);
         }
