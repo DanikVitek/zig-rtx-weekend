@@ -117,17 +117,10 @@ pub fn render(
         assert(metadata.size() == header.len + img_height * img_width * 3);
     }
 
-    const ptr, const file_mapping = blk: {
-        const result = try mmapImageFile(file, header.len + img_width * img_height * 3);
-        break :blk if (@typeInfo(@TypeOf(result)) == .@"struct")
-            result
-        else
-            .{ result, null };
-    };
-    defer switch (builtin.os.tag) {
-        .windows => munmapImageFile(ptr, file_mapping),
-        else => munmapImageFile(ptr),
-    };
+    const mapping = try mmapImageFile(file, header.len + img_width * img_height * 3);
+    defer munmapImageFile(mapping);
+
+    const ptr = mapping.getPtr();
 
     @memcpy(ptr[0..header.len], header);
     const image = std.mem.bytesAsSlice([3]u8, ptr[header.len..]);
@@ -137,9 +130,7 @@ pub fn render(
     // @memset(image, .{0} ** 3);
 
     const grid = try factorizeParallelizm();
-    if (builtin.mode == .Debug) {
-        std.debug.print("grid:\n  w: {d}\n  h: {d}\n", .{ grid.width, grid.height });
-    }
+    std.log.debug("grid: {d}x{d} WxH", .{ grid.width, grid.height });
 
     const progress = Progress.start(.{
         .estimated_total_items = grid.height * grid.width * grid.height * grid.width,
@@ -149,7 +140,7 @@ pub fn render(
     defer progress.end();
     var task_queue: TaskQueue(kernel) = undefined;
     try task_queue.init(allocator, grid.height * grid.height * grid.width * grid.width);
-    errdefer task_queue.terminate(allocator);
+    errdefer task_queue.abort(allocator);
 
     const whole_image_grid_cell_width = img_width / (grid.width * grid.width);
     const remainder_image_grid_cell_width = img_width % (grid.width * grid.width);
@@ -231,8 +222,10 @@ fn kernel(
                 kprogress.completeOne();
             }
             pixel.v /= @splat(samples_per_pixel);
+
             var pixel_bytes: [3]u8 = undefined;
-            _ = std.fmt.bufPrint(&pixel_bytes, "{}", .{pixel}) catch unreachable;
+            var fbs = std.io.fixedBufferStream(&pixel_bytes);
+            std.fmt.format(fbs.writer().any(), "{}", .{pixel}) catch unreachable;
             image[y * img_width + x] = pixel_bytes;
         }
     }
@@ -314,7 +307,7 @@ fn TaskQueue(comptime func: anytype) type {
         mutex: Mutex = .{},
         tasks: Tasks = .empty,
         run_to_exhaustion: AtomicBool = .init(false),
-        kill: AtomicBool = .init(false),
+        run: AtomicBool = .init(false),
         threads: []Thread,
 
         const Self = @This();
@@ -339,27 +332,23 @@ fn TaskQueue(comptime func: anytype) type {
                         fn f(
                             tasks: *Tasks,
                             mutex: *Mutex,
-                            kill: *const AtomicBool,
+                            run: *const AtomicBool,
                             run_to_exhaustion: *const AtomicBool,
                         ) Task(func).Return {
-                            while (!kill.load(.acquire)) {
+                            while (run.load(.acquire)) {
                                 if (mutex.tryLock()) {
                                     const maybe_task = blk: {
                                         defer mutex.unlock();
                                         break :blk tasks.pop();
                                     };
-                                    if (maybe_task) |task| {
-                                        if (@typeInfo(Task(func).Return) == .error_union) {
-                                            if (Task(func).Return == !void) {
-                                                try task.run();
-                                            } else {
-                                                @compileError("expected func to return `void` or `!void`");
-                                            }
-                                        } else if (Task(func).Return == void) {
-                                            task.run();
-                                        } else {
-                                            @compileError("expected func to return `void` or `!void`");
-                                        }
+                                    const err_msg = "expected func to return `void` or `!void`, but was `" ++ @typeName(Task(func).Return) ++ "`";
+                                    if (maybe_task) |task| switch (@typeInfo(Task(func).Return)) {
+                                        .void => task.run(),
+                                        .error_union => |eu| if (eu.payload == void)
+                                            try task.run()
+                                        else
+                                            @compileError(err_msg),
+                                        else => @compileError(err_msg),
                                     } else if (run_to_exhaustion.load(.acquire)) break;
                                 }
                             }
@@ -368,7 +357,7 @@ fn TaskQueue(comptime func: anytype) type {
                     .{
                         &self.tasks,
                         &self.mutex,
-                        &self.kill,
+                        &self.run,
                         &self.run_to_exhaustion,
                     },
                 );
@@ -395,9 +384,9 @@ fn TaskQueue(comptime func: anytype) type {
             }
         }
 
-        pub fn terminate(self: *Self, allocator: Allocator) void {
+        pub fn abort(self: *Self, allocator: Allocator) void {
             defer allocator.free(self.threads);
-            self.kill.store(true, .release);
+            self.run.store(false, .release);
             for (self.threads) |thread| {
                 thread.join();
             }
@@ -422,11 +411,26 @@ fn Task(comptime func: anytype) type {
     };
 }
 
-fn mmapImageFile(file: std.fs.File, size: usize) !switch (builtin.os.tag) {
+const MmapResult = switch (builtin.os.tag) {
     .wasi => @compileError("unsupported"),
-    .windows => struct { []u8, @import("windows.zig").HANDLE },
-    else => []align(std.heap.page_size_min) u8,
-} {
+    .windows => struct {
+        ptr: []u8,
+        file_mapping: std.os.windows.HANDLE,
+
+        inline fn getPtr(self: @This()) []u8 {
+            return self.ptr;
+        }
+    },
+    else => struct {
+        ptr: []align(std.heap.page_size_min) u8,
+
+        inline fn getPtr(self: @This()) []align(std.heap.page_size_min) u8 {
+            return self.ptr;
+        }
+    },
+};
+
+fn mmapImageFile(file: std.fs.File, size: usize) !MmapResult {
     return switch (builtin.os.tag) {
         .windows => blk: {
             const windows = @import("windows.zig");
@@ -462,41 +466,48 @@ fn mmapImageFile(file: std.fs.File, size: usize) !switch (builtin.os.tag) {
             };
 
             const many_ptr: [*]u8 = @ptrCast(ptr);
-            return .{ many_ptr[0..size], file_mapping };
+            return .{
+                .ptr = many_ptr[0..size],
+                .file_mapping = file_mapping,
+            };
         },
-        else => try std.posix.mmap(
+        else => .{ .ptr = try std.posix.mmap(
             null,
             size,
             std.posix.PROT.READ | std.posix.PROT.WRITE,
             .{ .TYPE = .SHARED },
             file.handle,
             0,
-        ),
+        ) },
     };
 }
 
-const munmapImageFile = switch (builtin.os.tag) {
-    .wasi => @compileError("unsupported"),
-    .windows => struct {
-        fn f(ptr: []const u8, file_mapping: std.os.windows.HANDLE) void {
+fn munmapImageFile(mmap_result: MmapResult) void {
+    switch (builtin.os.tag) {
+        .wasi => @compileError("unsupported"),
+        .windows => {
             const windows = @import("windows.zig");
             const UnmapViewOfFile = windows.UnmapViewOfFile;
             const FlushViewOfFile = windows.FlushViewOfFile;
             const CloseHandle = windows.CloseHandle;
 
+            const ptr, const file_mapping = .{ mmap_result.ptr, mmap_result.file_mapping };
+
             if (UnmapViewOfFile(ptr.ptr) == 0) {
+                @branchHint(.cold);
                 const err = std.os.windows.GetLastError();
                 std.log.err("Failed to unmap view of file ({d})", .{@intFromEnum(err)});
                 return;
             }
 
             if (FlushViewOfFile(ptr.ptr, 0) == 0) {
+                @branchHint(.cold);
                 const err = std.os.windows.GetLastError();
                 std.log.err("Failed to flush view of file ({d})", .{@intFromEnum(err)});
                 return;
             }
             CloseHandle(file_mapping);
-        }
-    }.f,
-    else => std.posix.munmap,
-};
+        },
+        else => std.posix.munmap(mmap_result.ptr),
+    }
+}
