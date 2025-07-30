@@ -101,16 +101,17 @@ pub fn normalized(self: Self) Self {
     return .init(self.v / Self.splat(mag).v);
 }
 
-pub fn randomInUnitSphere(rand: Random) Self {
+pub fn randomUnit(rand: Random) Self {
     while (true) {
         const v: Self = .random(rand);
         const m2 = v.magnitude2();
-        if (std.math.floatEpsAt(f64, 0) < m2 and m2 <= 1) return v.divScalar(@sqrt(m2));
+        if (std.math.floatEpsAt(f64, 0) < m2 and m2 <= 1)
+            return v.divScalar(@sqrt(m2));
     }
 }
 
-pub fn randomInHemisphere(normal: Self, rand: Random) Self {
-    const v = randomInUnitSphere(rand);
+pub fn randomUnitInHemisphere(normal: Self, rand: Random) Self {
+    const v = randomUnit(rand);
     return if (v.dot(normal) > 0)
         v
     else

@@ -88,11 +88,12 @@ pub fn normalized(self: Self) Self {
     return .init(self.v / Self.splat(mag).v);
 }
 
-pub fn randomInUnitDisk(rand: Random) Self {
+pub fn randomUnit(rand: Random) Self {
     while (true) {
         const v: Self = .random(rand);
         const m2 = v.magnitude2();
-        if (m2 <= 1) return v.divScalar(@sqrt(m2));
+        if (std.math.floatEpsAt(f64, 0) < m2 and m2 <= 1)
+            return v.divScalar(@sqrt(m2));
     }
 }
 

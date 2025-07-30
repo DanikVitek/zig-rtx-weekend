@@ -16,8 +16,8 @@ pub const Hit = struct {
 
     pub fn init(
         t: f64,
+        pos: Vec3,
         ray: Ray,
-        p: Vec3,
         outward_normal: Vec3,
         material: Material,
     ) Hit {
@@ -30,7 +30,7 @@ pub const Hit = struct {
         const front_face = ray.dir.dot(outward_normal) < 0;
         const norm = if (front_face) outward_normal else outward_normal.neg();
         return .{
-            .p = p,
+            .p = pos,
             .t = t,
             .front_face = front_face,
             .norm = norm,
@@ -59,7 +59,7 @@ pub const Material = union(enum) {
     pub fn scatter(self: Material, rand: std.Random, ray_in: Ray, hit: Hit) ?Scatter {
         return switch (self) {
             .lambertian => |m| blk: {
-                var scatter_dir: Vec3 = hit.norm.add(.randomInUnitSphere(rand));
+                var scatter_dir: Vec3 = hit.norm.add(.randomUnit(rand));
 
                 if (scatter_dir.isNearZero()) scatter_dir = hit.norm;
 
@@ -70,7 +70,7 @@ pub const Material = union(enum) {
             },
             .metal => |m| blk: {
                 var reflected: Vec3 = ray_in.dir.reflect(hit.norm);
-                reflected = .mulScalarAdd(m.fuzz, .randomInUnitSphere(rand), reflected.normalized());
+                reflected = .mulScalarAdd(m.fuzz, .randomUnit(rand), reflected.normalized());
                 break :blk if (reflected.dot(hit.norm) > 0)
                     .{
                         .scattered_ray = .init(hit.p, reflected),
@@ -111,10 +111,11 @@ pub const Sphere = struct {
     pub fn hit(self: Sphere, ray: Ray, ray_t: Interval) ?Hit {
         const center: Vec3 = self.center;
         const radius: f64 = self.radius;
+        const r_dir = ray.dir;
 
-        const oc: Vec3 = .init(self.center.v - ray.orig.v);
-        const a: f64 = ray.dir.magnitude2();
-        const h: f64 = ray.dir.dot(oc);
+        const oc: Vec3 = center.sub(ray.orig);
+        const a: f64 = r_dir.magnitude2();
+        const h: f64 = r_dir.dot(oc);
         const c: f64 = oc.magnitude2() - radius * radius;
         const discriminant: f64 = h * h - a * c;
 
@@ -132,6 +133,6 @@ pub const Sphere = struct {
 
         const p: Vec3 = ray.at(root);
         const outward_normal: Vec3 = p.sub(center).divScalar(radius);
-        return .init(root, ray, p, outward_normal, self.material);
+        return .init(root, p, ray, outward_normal, self.material);
     }
 };

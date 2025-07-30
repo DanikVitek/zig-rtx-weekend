@@ -58,7 +58,7 @@ const viewport_height = blk: {
 const viewport_width = blk: {
     const fwidth: comptime_float = @floatFromInt(img_width);
     const fheight: comptime_float = @floatFromInt(img_height);
-    break :blk viewport_height * (fwidth + 0.0) / fheight;
+    break :blk viewport_height * (fwidth / fheight);
 };
 
 /// Camera frame basis X axis
