@@ -307,7 +307,7 @@ fn TaskQueue(comptime func: anytype) type {
         mutex: Mutex = .{},
         tasks: Tasks = .empty,
         run_to_exhaustion: AtomicBool = .init(false),
-        run: AtomicBool = .init(false),
+        run: AtomicBool = .init(true),
         threads: []Thread,
 
         const Self = @This();
@@ -324,8 +324,9 @@ fn TaskQueue(comptime func: anytype) type {
                 self.tasks = try Tasks.initCapacity(allocator, cap);
             }
 
-            std.debug.print("Parallelism: {d}\n", .{parallelism});
+            std.log.debug("Parallelism: {d}", .{parallelism});
             for (0..parallelism) |i| {
+                std.log.debug("Starting thread {d}", .{i});
                 threads[i] = try Thread.spawn(
                     .{ .allocator = allocator },
                     struct {
