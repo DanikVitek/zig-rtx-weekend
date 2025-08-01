@@ -21,7 +21,7 @@ pub const aspect_ratio = 16.0 / 9.0;
 pub const img_width = 1920;
 
 /// Count of random samples for each pixel
-pub const samples_per_pixel = 100;
+pub const samples_per_pixel = 1000;
 /// Maximum number of ray bounces into scene
 pub const max_recursion = 50;
 
@@ -232,7 +232,8 @@ fn kernel(
 }
 
 fn getRay(rand: Random, x: f64, y: f64) Ray {
-    const offset = sampleSquare(rand);
+    // const offset = sampleSquare(rand);
+    const offset = samleGausian(rand);
     const pixel_sample: Vec3 = .mulScalarAdd(
         y + offset.y(),
         pixel_delta_v,
@@ -256,8 +257,15 @@ fn sampleSquare(rand: Random) Vec2 {
     });
 }
 
+fn samleGausian(rand: Random) Vec2 {
+    return .init(.{
+        rand.floatNorm(f64),
+        rand.floatNorm(f64),
+    });
+}
+
 fn defocusDiskScample(rand: Random) Vec3 {
-    const p: Vec2 = .randomInUnitDisk(rand);
+    const p: Vec2 = .randomUnit(rand);
     return .mulScalarAdd(
         p.x(),
         defocus_disk_u,
