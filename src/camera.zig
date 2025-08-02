@@ -23,7 +23,7 @@ pub const img_width = 1920;
 /// Count of random samples for each pixel
 pub const samples_per_pixel = 1000;
 /// Maximum number of ray bounces into scene
-pub const max_recursion = 50;
+pub const max_depth = 50;
 
 /// Vertical view angle (field of view)
 pub const v_fov = 20.0; // 90.0;
@@ -216,7 +216,7 @@ fn kernel(
                     @floatFromInt(x),
                     @floatFromInt(y),
                 );
-                pixel.v += rayColor(ray, rand, world, 0).v;
+                pixel.v += rayColor(ray, rand, world).v;
 
                 kprogress.completeOne();
             }
@@ -276,21 +276,27 @@ fn rayColor(
     ray: Ray,
     rand: Random,
     world: anytype,
-    depth: std.math.IntFittingRange(0, max_recursion + 1),
 ) Color {
-    if (depth > max_recursion) return .black;
+    var ray_ = ray;
+    var depth: std.math.IntFittingRange(0, max_depth + 1) = 0;
 
-    if (hitWorld(world, ray)) |hit| {
-        return if (hit.material.scatter(rand, ray, hit)) |scatter|
-            scatter.attenuation.mul(rayColor(scatter.scattered_ray, rand, world, depth + 1))
-        else
-            .black;
+    var product: Color = .white;
+    while (depth < max_depth) : (depth += 1) {
+        if (hitWorld(world, ray_)) |hit| {
+            if (hit.material.scatter(rand, ray_, hit)) |scatter| {
+                ray_ = scatter.scattered_ray;
+                product.mulAssign(scatter.attenuation);
+            } else return .black;
+        } else {
+            const unit_direction = ray_.dir.normalized();
+            const a: f64 = 0.5 * (unit_direction.y() + 1.0);
+            const wat: Color = .init(.{ 0.5, 0.7, 1 });
+            product.mulAssign(wat.mulScalarAdd(a, .splat(1.0 - a)));
+            break;
+        }
     }
 
-    const unit_direction = ray.dir.normalized();
-    const a: f64 = 0.5 * (unit_direction.y() + 1.0);
-    const wat: Color = .init(.{ 0.5, 0.7, 1 });
-    return .mulScalarAdd(a, wat, .splat(1.0 - a));
+    return product;
 }
 
 fn hitWorld(objs: anytype, ray: Ray) ?Hit {

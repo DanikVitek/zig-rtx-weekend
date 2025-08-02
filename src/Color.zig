@@ -44,8 +44,16 @@ pub inline fn mul(lhs: Self, rhs: Self) Self {
     return .{ .v = lhs.v * rhs.v };
 }
 
+pub inline fn mulAssign(self: *Self, other: Self) void {
+    self.v *= other.v;
+}
+
 pub inline fn mulScalar(lhs: Self, rhs: f64) Self {
     return .{ .v = lhs.v * Self.splat(rhs).v };
+}
+
+pub inline fn mulScalarAssign(self: *Self, scalar: f64) void {
+    self.v *= Self.splat(scalar).v;
 }
 
 pub inline fn div(lhs: Self, rhs: Self) Self {
