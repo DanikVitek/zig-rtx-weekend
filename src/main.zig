@@ -7,10 +7,10 @@ const objects = @import("objects.zig");
 const Sphere = objects.Sphere;
 const Material = objects.Material;
 const camera = @import("camera.zig");
+const rnd = @import("rnd.zig");
 
 pub fn main() !void {
-    var rand_state = std.Random.DefaultPrng.init(42);
-    const rand = rand_state.random();
+    const rand = rnd.random();
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -69,5 +69,5 @@ pub fn main() !void {
     const mat3: Material = .{ .metal = .{ .albedo = .init(.{ 0.7, 0.6, 0.5 }) } };
     world.appendAssumeCapacity(.init(.init(.{ 4, 1, 0 }), 1, mat3));
 
-    try camera.render(allocator, rand, image_path, world.items);
+    try camera.render(allocator, image_path, world.items);
 }

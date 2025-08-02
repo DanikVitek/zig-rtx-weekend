@@ -95,7 +95,6 @@ const pixel00_loc: Vec3 = blk: {
 
 pub fn render(
     allocator: Allocator,
-    rand: Random,
     image_path: []const u8,
     world: anytype,
 ) !void {
@@ -163,7 +162,6 @@ pub fn render(
                     world,
                     image,
                     progress,
-                    rand,
                 },
             });
         }
@@ -199,7 +197,6 @@ fn kernel(
     world: []const objects.Sphere,
     image: [][3]u8,
     progress: std.Progress.Node,
-    rand: Random,
 ) void {
     const fmt = "T: {d}; x: {d}, y: {d}, w: {d}, h: {d}";
     var name_buf: [std.fmt.count(fmt, .{std.math.maxInt(Thread.Id)} ++ .{std.math.maxInt(usize)} ** 4)]u8 = undefined;
@@ -207,6 +204,8 @@ fn kernel(
 
     const kprogress = progress.start(name, kw * kh * samples_per_pixel);
     defer kprogress.end();
+
+    const rand = @import("rnd.zig").random();
 
     for (kx..kx + kw) |x| {
         for (ky..ky + kh) |y| {
