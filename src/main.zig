@@ -6,7 +6,7 @@ const Color = @import("Color.zig");
 const objects = @import("objects.zig");
 const Sphere = objects.Sphere;
 const Material = objects.Material;
-const camera = @import("camera.zig");
+const Camera = @import("Camera.zig");
 const rnd = @import("rnd.zig");
 
 pub fn main() !void {
@@ -46,14 +46,18 @@ pub fn main() !void {
 
             if (center.sub(.init(.{ 4, 0.2, 0 })).length() > 0.9) {
                 const sphere_mat: Material = if (choose_mat < 0.8)
-                    .{ .lambertian = .{ .albedo = .init(Vec3.random(rand).mul(.random(rand)).v) } }
+                    .{ .lambertian = .{
+                        .albedo = .init(Vec3.random(rand).mul(.random(rand)).v),
+                    } }
                 else if (choose_mat < 0.95)
                     .{ .metal = .{
                         .albedo = .init(Vec3.random(rand).add(.splat(1)).divScalar(2).v),
                         .fuzz = rand.float(f64) / 2,
                     } }
                 else
-                    .{ .dielectric = .{ .refraction_idx = 1.5 } };
+                    .{ .dielectric = .{
+                        .refraction_idx = 1.5,
+                    } };
 
                 world.appendAssumeCapacity(.init(center, 0.2, sphere_mat));
             }
@@ -68,6 +72,14 @@ pub fn main() !void {
 
     const mat3: Material = .{ .metal = .{ .albedo = .init(.{ 0.7, 0.6, 0.5 }) } };
     world.appendAssumeCapacity(.init(.init(.{ 4, 1, 0 }), 1, mat3));
+
+    const camera: Camera = comptime .init(.{
+        .v_fov = 20,
+        .look_from = .init(.{ 13, 2, 3 }),
+        .look_at = .zero,
+        .defocus_angle = 0.6,
+        .focus_dist = 10,
+    });
 
     try camera.render(allocator, image_path, world.items);
 }

@@ -15,85 +15,129 @@ const Color = @import("Color.zig");
 const objects = @import("objects.zig");
 const Hit = objects.Hit;
 
-/// Ratio of image width over height
-pub const aspect_ratio = 16.0 / 9.0;
-/// Rendered image width in pixel count
-pub const img_width = 1920;
+const Self = @This();
 
-/// Count of random samples for each pixel
-pub const samples_per_pixel = 1000;
-/// Maximum number of ray bounces into scene
-pub const max_depth = 50;
+pub const Options = struct {
+    /// Ratio of image width over height
+    aspect_ratio: f64 = 16.0 / 9.0,
+    /// Rendered image width in pixel count
+    img_dim: ImgDim = .{ .width = 1920 },
 
-/// Vertical view angle (field of view)
-pub const v_fov = 20.0; // 90.0;
+    /// Count of random samples for each pixel
+    samples_per_pixel: u16 = 100,
+    /// Maximum number of ray bounces into scene
+    max_depth: u16 = 50,
 
-/// Point camera is looking from
-pub const look_from: Vec3 = .init(.{ 13, 2, 3 }); //.zero;
-/// Point camera is looking at
-pub const look_at: Vec3 = .zero;
+    /// Vertical view angle (field of view)
+    v_fov: f64 = 90,
 
-/// Camera-relative "up" direction
-pub const v_up: Vec3 = .y_axis;
+    /// Point camera is looking from
+    look_from: Vec3 = .zero,
+    /// Point camera is looking at
+    look_at: Vec3 = .neg_z_axis,
 
-/// Variation angle of rays through each pixel
-pub const defocus_angle = 0.6; //0.0;
-/// Distance from camera lookfrom point to plane of perfect focus
-pub const focus_dist = 10.0; //10.0;
+    /// Camera-relative "up" direction
+    up: Vec3 = .y_axis,
 
-/// Rendered image height
-const img_height = blk: {
-    const fwidth: comptime_float = @floatFromInt(img_width);
-    const h: comptime_int = @intFromFloat(fwidth / aspect_ratio);
-    break :blk if (h < 1) 1 else h;
+    /// Variation angle of rays through each pixel
+    defocus_angle: f64 = 0,
+    /// Distance from camera lookfrom point to plane of perfect focus
+    focus_dist: f64 = 10,
 };
 
-const camera_center: Vec3 = look_from;
-
-const viewport_height = blk: {
-    const theta: comptime_float = std.math.degreesToRadians(v_fov);
-    const h: comptime_float = std.math.tan(theta / 2.0);
-    break :blk 2 * h * focus_dist;
-};
-const viewport_width = blk: {
-    const fwidth: comptime_float = @floatFromInt(img_width);
-    const fheight: comptime_float = @floatFromInt(img_height);
-    break :blk viewport_height * (fwidth / fheight);
+pub const ImgDim = union(enum) {
+    width: u32,
+    height: u32,
 };
 
-/// Camera frame basis X axis
-const u: Vec3 = v_up.cross(w).normalized();
-/// Camera frame basis Y axis
-const v: Vec3 = w.cross(u);
-/// Camera frame basis Z axis
-const w: Vec3 = look_from.sub(look_at).normalized();
+aspect_ratio: f64,
+img_width: u32,
+img_height: u32,
+samples_per_pixel: u16,
+max_depth: usize,
+look_from: Vec3,
+defocus_angle: f64,
+defocus_disk_u: Vec3,
+defocus_disk_v: Vec3,
+pixel_delta_u: Vec3,
+pixel_delta_v: Vec3,
+pixel00_loc: Vec3,
 
-const defocus_radius = focus_dist * std.math.tan(std.math.degreesToRadians(defocus_angle / 2.0));
-/// Defocus disk horizontal radius
-const defocus_disk_u: Vec3 = u.mulScalar(defocus_radius);
-/// Defocus disk vertical radius
-const defocus_disk_v: Vec3 = v.mulScalar(defocus_radius);
+pub fn init(options: Options) Self {
+    const img_width, const img_height = switch (options.img_dim) {
+        .width => |img_width| blk: {
+            const fwidth: f64 = @floatFromInt(img_width);
+            const h: u32 = @intFromFloat(fwidth / options.aspect_ratio);
+            break :blk .{ img_width, if (h < 1) 1 else h };
+        },
+        .height => |img_height| blk: {
+            const fheight: f64 = @floatFromInt(img_height);
+            const w: u32 = @intFromFloat(fheight * options.aspect_ratio);
+            break :blk .{ w, img_height };
+        },
+    };
 
-/// Vector across viewport horizontal edge
-const viewport_u = u.mulScalar(viewport_width);
-/// Vector down viewport vertical edge
-const viewport_v = v.neg().mulScalar(viewport_height);
+    const viewport_height = blk: {
+        const theta = std.math.degreesToRadians(options.v_fov);
+        const h = std.math.tan(theta / 2.0);
+        break :blk 2 * h * options.focus_dist;
+    };
+    const viewport_width = blk: {
+        const fwidth: f64 = @floatFromInt(img_width);
+        const fheight: f64 = @floatFromInt(img_height);
+        break :blk viewport_height * (fwidth / fheight);
+    };
 
-/// Offset to pixel to the right
-const pixel_delta_u: Vec3 = viewport_u.divScalar(img_width);
-/// Offset to pixel below
-const pixel_delta_v: Vec3 = viewport_v.divScalar(img_height);
+    // Camera frame basis Z axis
+    const w: Vec3 = options.look_from.sub(options.look_at).normalized();
+    // Camera frame basis X axis
+    const u: Vec3 = options.up.cross(w).normalized();
+    // Camera frame basis Y axis
+    const v: Vec3 = w.cross(u);
 
-/// Location of pixel (0, 0)
-const pixel00_loc: Vec3 = blk: {
-    const viewport_upper_left: Vec3 = camera_center
-        .sub(w.mulScalar(focus_dist))
-        .sub(viewport_u.divScalar(2))
-        .sub(viewport_v.divScalar(2));
-    break :blk pixel_delta_u.add(pixel_delta_v).mulScalar(0.5).add(viewport_upper_left);
-};
+    const defocus_radius = options.focus_dist * std.math.tan(std.math.degreesToRadians(options.defocus_angle / 2.0));
+    // Defocus disk horizontal radius
+    const defocus_disk_u: Vec3 = u.mulScalar(defocus_radius);
+    // Defocus disk vertical radius
+    const defocus_disk_v: Vec3 = v.mulScalar(defocus_radius);
+
+    // Vector across viewport horizontal edge
+    const viewport_u = u.mulScalar(viewport_width);
+    // Vector down viewport vertical edge
+    const viewport_v = v.neg().mulScalar(viewport_height);
+
+    // Offset to pixel to the right
+    const pixel_delta_u: Vec3 = viewport_u.divScalar(@floatFromInt(img_width));
+    // Offset to pixel below
+    const pixel_delta_v: Vec3 = viewport_v.divScalar(@floatFromInt(img_height));
+
+    // Location of pixel (0, 0)
+    const pixel00_loc: Vec3 = blk: {
+        const viewport_upper_left: Vec3 = options.look_from
+            .sub(w.mulScalar(options.focus_dist))
+            .sub(viewport_u.divScalar(2))
+            .sub(viewport_v.divScalar(2));
+        break :blk pixel_delta_u.add(pixel_delta_v).mulScalar(0.5).add(viewport_upper_left);
+    };
+
+    return .{
+        .aspect_ratio = options.aspect_ratio,
+        .img_width = img_width,
+        .img_height = img_height,
+        .samples_per_pixel = options.samples_per_pixel,
+        .max_depth = options.max_depth,
+        .look_from = options.look_from,
+        .defocus_angle = options.defocus_angle,
+        .defocus_disk_u = defocus_disk_u,
+        .defocus_disk_v = defocus_disk_v,
+        .pixel_delta_u = pixel_delta_u,
+        .pixel_delta_v = pixel_delta_v,
+        .pixel00_loc = pixel00_loc,
+    };
+}
 
 pub fn render(
+    self: *const Self,
     allocator: Allocator,
     image_path: []const u8,
     world: anytype,
@@ -107,16 +151,17 @@ pub fn render(
 
     const header_format = "P6\n{d} {d}\n255\n";
     var buf: [std.fmt.count(header_format, .{std.math.maxInt(u32)} ** 2)]u8 = undefined;
-    const header: []const u8 = try std.fmt.bufPrint(&buf, header_format, .{ img_width, img_height });
+    const header: []const u8 = try std.fmt.bufPrint(&buf, header_format, .{ self.img_width, self.img_height });
 
-    try file.setEndPos(header.len + img_width * img_height * 3);
+    const size = header.len + self.img_width * self.img_height * 3;
+    try file.setEndPos(size);
 
     if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
         const metadata = try file.metadata();
-        assert(metadata.size() == header.len + img_height * img_width * 3);
+        assert(metadata.size() == size);
     }
 
-    const mapping = try mmapImageFile(file, header.len + img_width * img_height * 3);
+    const mapping = try mmapImageFile(file, size);
     defer munmapImageFile(mapping);
 
     const ptr = mapping.getPtr();
@@ -128,7 +173,7 @@ pub fn render(
     // defer allocator.free(image);
     // @memset(image, .{0} ** 3);
 
-    const grid = try factorizeParallelizm();
+    const grid = try self.factorizeParallelizm();
     std.log.debug("grid: {d}x{d} WxH", .{ grid.width, grid.height });
 
     const progress = Progress.start(.{
@@ -141,10 +186,10 @@ pub fn render(
     try task_queue.init(allocator, grid.height * grid.height * grid.width * grid.width);
     errdefer task_queue.abort(allocator);
 
-    const whole_image_grid_cell_width = img_width / (grid.width * grid.width);
-    const remainder_image_grid_cell_width = img_width % (grid.width * grid.width);
-    const whole_image_grid_cell_height = img_height / (grid.height * grid.height);
-    const remainder_image_grid_cell_height = img_height % (grid.height * grid.height);
+    const whole_image_grid_cell_width = self.img_width / (grid.width * grid.width);
+    const remainder_image_grid_cell_width = self.img_width % (grid.width * grid.width);
+    const whole_image_grid_cell_height = self.img_height / (grid.height * grid.height);
+    const remainder_image_grid_cell_height = self.img_height % (grid.height * grid.height);
     for (0..grid.height * grid.height) |i| {
         for (0..grid.width * grid.width) |j| {
             const kernel_x = j * (whole_image_grid_cell_width + @intFromBool(j < remainder_image_grid_cell_width + 1));
@@ -155,6 +200,7 @@ pub fn render(
 
             try task_queue.addTask(allocator, .{
                 .args = .{
+                    self,
                     kernel_x,
                     kernel_y,
                     kernel_width,
@@ -170,15 +216,15 @@ pub fn render(
     task_queue.runToCompletion(allocator);
 }
 
-fn factorizeParallelizm() !struct { width: Sqrt(usize), height: Sqrt(usize) } {
+fn factorizeParallelizm(self: *const Self) !struct { width: Sqrt(usize), height: Sqrt(usize) } {
     const parallelizm: usize = try Thread.getCpuCount();
 
     const dim_a: Sqrt(usize) = std.math.sqrt(parallelizm);
     const dim_b: Sqrt(usize) = @intCast(try std.math.divExact(usize, parallelizm, dim_a));
 
     return .{
-        .width = if (aspect_ratio > 1) @max(dim_a, dim_b) else @min(dim_a, dim_b),
-        .height = if (aspect_ratio > 1) @min(dim_a, dim_b) else @max(dim_a, dim_b),
+        .width = if (self.aspect_ratio > 1) dim_b else dim_a,
+        .height = if (self.aspect_ratio > 1) dim_a else dim_b,
     };
 }
 
@@ -190,6 +236,7 @@ fn Sqrt(comptime T: type) type {
 }
 
 fn kernel(
+    self: *const Self,
     kx: usize,
     ky: usize,
     kw: usize,
@@ -202,7 +249,7 @@ fn kernel(
     var name_buf: [std.fmt.count(fmt, .{std.math.maxInt(Thread.Id)} ++ .{std.math.maxInt(usize)} ** 4)]u8 = undefined;
     const name: []const u8 = std.fmt.bufPrint(&name_buf, fmt, .{ Thread.getCurrentId(), kx, ky, kw, kh }) catch unreachable;
 
-    const kprogress = progress.start(name, kw * kh * samples_per_pixel);
+    const kprogress = progress.start(name, kw * kh * self.samples_per_pixel);
     defer kprogress.end();
 
     const rand = @import("rnd.zig").random();
@@ -210,38 +257,42 @@ fn kernel(
     for (kx..kx + kw) |x| {
         for (ky..ky + kh) |y| {
             var pixel: Color = .black;
-            for (0..samples_per_pixel) |_| {
-                const ray: Ray = getRay(
+            for (0..self.samples_per_pixel) |_| {
+                const ray: Ray = self.getRay(
                     rand,
                     @floatFromInt(x),
                     @floatFromInt(y),
                 );
-                pixel.v += rayColor(ray, rand, world).v;
+                pixel.v += self.rayColor(ray, rand, world).v;
 
                 kprogress.completeOne();
             }
-            pixel.v /= @splat(samples_per_pixel);
+            pixel.v /= @splat(@floatFromInt(self.samples_per_pixel));
 
             var pixel_bytes: [3]u8 = undefined;
             var fbs = std.io.fixedBufferStream(&pixel_bytes);
             std.fmt.format(fbs.writer().any(), "{}", .{pixel}) catch unreachable;
-            image[y * img_width + x] = pixel_bytes;
+            image[y * self.img_width + x] = pixel_bytes;
         }
     }
 }
 
-fn getRay(rand: Random, x: f64, y: f64) Ray {
+fn getRay(self: *const Self, rand: Random, x: f64, y: f64) Ray {
     // const offset = sampleSquare(rand);
     const offset = samleGausian(rand);
-    const pixel_sample = pixel_delta_v.mulScalarAdd(
+    const pixel_sample = self.pixel_delta_v.mulScalarAdd(
         y + offset.y(),
-        pixel_delta_u.mulScalarAdd(
+        self.pixel_delta_u.mulScalarAdd(
             x + offset.x(),
-            pixel00_loc,
+            self.pixel00_loc,
         ),
     );
 
-    const ray_origin = if (defocus_angle <= 0) camera_center else defocusDiskScample(rand);
+    const ray_origin = if (self.defocus_angle <= 0)
+        self.look_from
+    else
+        self.defocusDiskScample(rand);
+
     const ray_dir: Vec3 = pixel_sample.sub(ray_origin);
 
     return .init(ray_origin, ray_dir);
@@ -261,27 +312,28 @@ fn samleGausian(rand: Random) Vec2 {
     });
 }
 
-fn defocusDiskScample(rand: Random) Vec3 {
+fn defocusDiskScample(self: *const Self, rand: Random) Vec3 {
     const p: Vec2 = .randomUnit(rand);
-    return defocus_disk_u.mulScalarAdd(
+    return self.defocus_disk_u.mulScalarAdd(
         p.x(),
-        defocus_disk_v.mulScalarAdd(
+        self.defocus_disk_v.mulScalarAdd(
             p.y(),
-            camera_center,
+            self.look_from,
         ),
     );
 }
 
 fn rayColor(
+    self: *const Self,
     ray: Ray,
     rand: Random,
     world: anytype,
 ) Color {
     var ray_ = ray;
-    var depth: std.math.IntFittingRange(0, max_depth + 1) = 0;
+    var depth: @TypeOf(self.max_depth) = 0;
 
     var product: Color = .white;
-    while (depth < max_depth) : (depth += 1) {
+    while (depth < self.max_depth) : (depth += 1) {
         if (hitWorld(world, ray_)) |hit| {
             if (hit.material.scatter(rand, ray_, hit)) |scatter| {
                 ray_ = scatter.scattered_ray;
@@ -319,12 +371,11 @@ fn TaskQueue(comptime func: anytype) type {
         run: AtomicBool = .init(true),
         threads: []Thread,
 
-        const Self = @This();
         const Mutex = std.Thread.Mutex;
         const AtomicBool = std.atomic.Value(bool);
         const Tasks = std.ArrayListUnmanaged(Task(func));
 
-        pub fn init(self: *Self, allocator: Allocator, tasks_cap: ?usize) !void {
+        pub fn init(self: *@This(), allocator: Allocator, tasks_cap: ?usize) !void {
             const parallelism = try Thread.getCpuCount();
             const threads = try allocator.alloc(Thread, parallelism);
 
@@ -374,19 +425,19 @@ fn TaskQueue(comptime func: anytype) type {
             }
         }
 
-        pub fn addTask(self: *Self, allocator: Allocator, task: Task(func)) !void {
+        pub fn addTask(self: *@This(), allocator: Allocator, task: Task(func)) !void {
             self.mutex.lock();
             defer self.mutex.unlock();
             try self.tasks.append(allocator, task);
         }
 
-        pub fn addTaskAssumeCapacity(self: *Self, task: Task(func)) void {
+        pub fn addTaskAssumeCapacity(self: *@This(), task: Task(func)) void {
             self.mutex.lock();
             defer self.mutex.unlock();
             self.tasks.appendAssumeCapacity(task);
         }
 
-        pub fn runToCompletion(self: *Self, allocator: Allocator) void {
+        pub fn runToCompletion(self: *@This(), allocator: Allocator) void {
             defer allocator.free(self.threads);
             self.run_to_exhaustion.store(true, .release);
             for (self.threads) |thread| {
@@ -394,7 +445,7 @@ fn TaskQueue(comptime func: anytype) type {
             }
         }
 
-        pub fn abort(self: *Self, allocator: Allocator) void {
+        pub fn abort(self: *@This(), allocator: Allocator) void {
             defer allocator.free(self.threads);
             self.run.store(false, .release);
             for (self.threads) |thread| {
