@@ -70,7 +70,7 @@ pub const Material = union(enum) {
             },
             .metal => |m| blk: {
                 var reflected: Vec3 = ray_in.dir.reflect(hit.norm);
-                reflected = .mulScalarAdd(m.fuzz, .randomUnit(rand), reflected.normalized());
+                reflected = Vec3.randomUnit(rand).mulScalarAdd(m.fuzz, reflected.normalized());
                 break :blk if (reflected.dot(hit.norm) > 0)
                     .{
                         .scattered_ray = .init(hit.p, reflected),

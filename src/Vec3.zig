@@ -67,8 +67,8 @@ pub inline fn mulAdd(a: Self, b: Self, c: Self) Self {
     return .init(@mulAdd(Repr, a.v, b.v, c.v));
 }
 
-pub inline fn mulScalarAdd(a: f64, b: Self, c: Self) Self {
-    return .init(@mulAdd(Repr, @splat(a), b.v, c.v));
+pub inline fn mulScalarAdd(a: Self, b: f64, c: Self) Self {
+    return .init(@mulAdd(Repr, a.v, @splat(b), c.v));
 }
 
 pub fn magnitude(self: Self) f64 {
@@ -142,9 +142,10 @@ pub fn refract(self: Self, rand: Random, norm: Self, refraction_idx: f64) Self {
     const sin_theta = @sqrt(1 - cos_theta * cos_theta);
 
     const cannot_refract: bool = refraction_idx * sin_theta > 1;
-    if (cannot_refract or reflectance(cos_theta, refraction_idx) > rand.float(f64)) return self.reflect(norm);
+    if (cannot_refract or reflectance(cos_theta, refraction_idx) > rand.float(f64))
+        return self.reflect(norm);
 
-    const r_out_perp = mulScalarAdd(cos_theta, norm, self).mulScalar(refraction_idx);
+    const r_out_perp = norm.mulScalarAdd(cos_theta, self).mulScalar(refraction_idx);
     const r_out_parallel = norm.mulScalar(-@sqrt(@abs(1 - r_out_perp.magnitude2())));
     return r_out_perp.add(r_out_parallel);
 }

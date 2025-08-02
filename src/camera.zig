@@ -233,12 +233,10 @@ fn kernel(
 fn getRay(rand: Random, x: f64, y: f64) Ray {
     // const offset = sampleSquare(rand);
     const offset = samleGausian(rand);
-    const pixel_sample: Vec3 = .mulScalarAdd(
+    const pixel_sample = pixel_delta_v.mulScalarAdd(
         y + offset.y(),
-        pixel_delta_v,
-        .mulScalarAdd(
+        pixel_delta_u.mulScalarAdd(
             x + offset.x(),
-            pixel_delta_u,
             pixel00_loc,
         ),
     );
@@ -265,12 +263,10 @@ fn samleGausian(rand: Random) Vec2 {
 
 fn defocusDiskScample(rand: Random) Vec3 {
     const p: Vec2 = .randomUnit(rand);
-    return .mulScalarAdd(
+    return defocus_disk_u.mulScalarAdd(
         p.x(),
-        defocus_disk_u,
-        .mulScalarAdd(
+        defocus_disk_v.mulScalarAdd(
             p.y(),
-            defocus_disk_v,
             camera_center,
         ),
     );

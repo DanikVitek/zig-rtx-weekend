@@ -60,8 +60,8 @@ pub inline fn mulAdd(x: Self, y: Self, z: Self) Self {
     return .{ .v = @mulAdd(Repr, x.v, y.v, z.v) };
 }
 
-pub inline fn mulScalarAdd(x: f64, y: Self, z: Self) Self {
-    return .{ .v = @mulAdd(Repr, @splat(x), y.v, z.v) };
+pub inline fn mulScalarAdd(x: Self, y: f64, z: Self) Self {
+    return .{ .v = @mulAdd(Repr, x.v, @splat(y), z.v) };
 }
 
 fn linearToGamma(self: Self) Self {
